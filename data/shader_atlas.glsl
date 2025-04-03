@@ -258,10 +258,12 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 	return normalize(TBN * normal_pixel);
 }
 
+
+
+////////////////////////////////////////////////////////////////////////
 \single_phong.fs
 
 #version 330 core
-
 #include utils
 
 in vec3 v_position;
@@ -270,10 +272,14 @@ in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
+uniform vec3 u_camera_position;	//camera eye;
+
 uniform vec4 u_color;
 uniform sampler2D u_texture;
 uniform float u_time;
 uniform float u_alpha_cutoff;
+
+uniform vec3 u_ambient_light;	//Luz ambiente xd
 
 out vec4 FragColor;
 
@@ -281,10 +287,18 @@ void main()
 {
 	vec2 uv = v_uv;
 	vec4 color = u_color;
-	color *= texture( u_texture, v_uv );
+	color *= texture( u_texture, v_uv );	//Initial color of the surface of the object
 
 	if(color.a < u_alpha_cutoff)
 		discard;
 
-	FragColor = color;
+	vec3 light = u_ambient_light;			//Amount of light that we have at the beginning When rendering the image
+	vec4 final_color;
+	final_color.xyz = color.xyz * light;	//We perform this because we are multiplting a vector4 with a vector3
+	final_color.a = color.a;				//We just pass the remaining dimension to the final_color
+
+	//color.y = 1.0;						//Línea para chequear q se implementa bien el shader, pone todo de color q perotca xd,	 x=rojo		y=verde		z=azul
+	FragColor = final_color;				//IMPORTANT!! --> FragColor is the resulting color to be display on the screen!!!
 }
+
+////////////////////////////////////////////////////////////////////////

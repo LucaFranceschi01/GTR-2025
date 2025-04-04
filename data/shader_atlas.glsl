@@ -270,14 +270,13 @@ in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
-uniform vec3 u_camera_position;	//camera eye
-
 uniform vec4 u_color;
 uniform sampler2D u_texture;
 uniform float u_time;
 uniform float u_alpha_cutoff;
 
 uniform vec3 u_ambient_light;
+uniform vec3 u_light_position[10];	//camera eye
 
 out vec4 FragColor;
 

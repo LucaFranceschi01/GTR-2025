@@ -73,6 +73,12 @@ template<typename T> inline Vector2<T> operator * (const Vector2<T>& a, T v) { r
 template<typename T> inline Vector2<T> operator + (const Vector2<T>& a, const Vector2<T>& b) { return Vector2<T>(a.x + b.x, a.y + b.y); }
 template<typename T> inline Vector2<T> operator - (const Vector2<T>& a, const Vector2<T>& b) { return Vector2<T>(a.x - b.x, a.y - b.y); }
 
+// to multiply with doubles, not only float
+template<typename T, typename U>
+inline Vector2<T> operator * (const Vector2<T>& a, U v) {
+	return Vector2<T>(a.x * static_cast<T>(v), a.y * static_cast<T>(v));
+}
+
 template<typename T> Vector2<T> normalize(const Vector2<T>& n);
 template<typename T> inline Vector2<T> lerp(const Vector2<T>& a, const Vector2<T>& b, T v) { return a*((T)(1.0) - v) + b*v; }
 

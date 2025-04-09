@@ -3,6 +3,8 @@
 #include "../core/ui.h"
 #include "../utils/utils.h"
 
+#include "gfx/shader.h"
+
 SCN::LightEntity::LightEntity()
 {
 	light_type = eLightType::POINT;
@@ -61,4 +63,39 @@ void SCN::LightEntity::serialize(cJSON* json)
 		writeJSONString(json, "light_type", "DIRECTIONAL");
 }
 
+void SCN::LightUniforms::bind(GFX::Shader* shader) const
+{
+	// upload light-related uniforms
+	shader->setUniform("u_ambient_light", ambient_light);
+	shader->setUniform("u_light_count", count);
 
+	shader->setUniform1Array("u_light_intensity", intensities, MAX_LIGHTS);
+	shader->setUniform1Array("u_light_type", types, MAX_LIGHTS);
+	shader->setUniform3Array("u_light_position", (float*)positions, MAX_LIGHTS); // vector
+	shader->setUniform3Array("u_light_color", (float*)colors, MAX_LIGHTS);
+
+	// for directional lights
+	shader->setUniform3Array("u_light_direction", (float*)directions, MAX_LIGHTS);
+
+	// for spotlights
+	shader->setUniform2Array("u_light_cone", (float*)cone_info, MAX_LIGHTS);
+}
+
+void SCN::LightUniforms::add_light(LightEntity* light)
+{
+	Matrix44 gm = light->root.getGlobalMatrix();
+
+	// for all types of light
+	intensities[count] = light->intensity;
+	types[count] = light->light_type;
+	colors[count] = light->color;
+	positions[count] = gm.getTranslation();
+
+	// for directional + spot lights
+	directions[count] = gm.frontVector();
+
+	// for spotlights
+	cone_info[count] = light->cone_info * DEG2RAD;
+
+	count++;
+}

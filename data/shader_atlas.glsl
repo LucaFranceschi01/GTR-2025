@@ -293,6 +293,7 @@ uniform float u_light_type[MAX_LIGHTS];
 uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
 uniform vec3 u_light_direction[MAX_LIGHTS];
+uniform vec2 u_light_cone[MAX_LIGHTS]; // alpha_min and alpha_max in radians
 
 uniform sampler2D u_texture_metallic_roughness;
 uniform float u_roughness;
@@ -321,7 +322,7 @@ void main()
 	vec3 final_light = u_ambient_light;
 
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
-	float N_dot_L, R_dot_V, dist;
+	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position);
@@ -331,15 +332,26 @@ void main()
 		// diffuse
 		if (u_light_type[i] == LT_DIRECTIONAL) {
 			L = u_light_direction[i];
+			L = normalize(L);
 			light_intensity = u_light_color[i] * u_light_intensity[i]; // No attenuation for directional light
-
 		} else if (u_light_type[i] == LT_POINT) {
 			L = u_light_position[i] - v_world_position;
 			dist = length(L); // used in light intensity
+			L = normalize(L);
 			light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2); // light intensity reduced by distance
+		} else if (u_light_type[i] == LT_SPOT) {
+			L = u_light_position[i] - v_world_position;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+			numerator = clamp(dot(L, normalize(u_light_direction[i])), 0.0, 1.0) - cos(u_light_cone[i].y);
+			light_intensity = vec3(0.0);
+			if (numerator >= 0) {
+				light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2);
+				light_intensity *= numerator;
+				light_intensity /= (cos(u_light_cone[i].x) - cos(u_light_cone[i].y));
+			}
 		}
 
-		L = normalize(L);
 		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
 		diffuse_term = N_dot_L * light_intensity;
 

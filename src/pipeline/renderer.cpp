@@ -80,11 +80,8 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 	// end transparencies
 }
 
-void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
-	// HERE =====================
-	// TODO: GENERATE RENDERABLES
-	// ==========================
-
+void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
+{
 	// important to clear the list in each pass
 	draw_commands_opaque.clear();
 	draw_commands_transp.clear();
@@ -115,20 +112,9 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 		{
 			// Store Lights
 			LightEntity* light = static_cast<LightEntity*>(entity);
-			gm = light->root.getGlobalMatrix();
 
-			light_info.intensities[light_info.count] = light->intensity;
-			light_info.types[light_info.count] = light->light_type;
-			light_info.colors[light_info.count] = light->color;
-			light_info.positions[light_info.count] = gm.getTranslation();
-			
-			// for directional lights
-			light_info.directions[light_info.count] = gm.frontVector();
-
-			// for spotlights
-			light_info.cone_info[light_info.count] = light->cone_info * DEG2RAD;
-
-			light_info.count++;
+			// add light to our structure
+			light_info.add_light(light);
 			break;
 		}
 		default:
@@ -167,10 +153,6 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	//render skybox
 	if(skybox_cubemap)
 		renderSkybox(skybox_cubemap);
-
-	// HERE =====================
-	// TODO: RENDER RENDERABLES
-	// ==========================
 
 	// first render opaque entities
 	for (s_DrawCommand command : draw_commands_opaque) {
@@ -261,25 +243,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
-	// Upload some material properties
-	shader->setUniform("u_roughness", material->roughness_factor);
-	//shader->setUniform("u_metallic", material->metallic_factor);
-
-	// upload light-related uniforms
-	// setUniform3Array for SINGLEPASS and then iterate over all of them (fixed count on for loop, if inside with another uniform for counting)
-	shader->setUniform("u_ambient_light", ambient_light);
-	shader->setUniform("u_light_count", light_info.count);
-
-	shader->setUniform1Array("u_light_intensity", light_info.intensities, MAX_LIGHTS);
-	shader->setUniform1Array("u_light_type", light_info.types, MAX_LIGHTS);
-	shader->setUniform3Array("u_light_position", (float*)light_info.positions, MAX_LIGHTS); // vector
-	shader->setUniform3Array("u_light_color", (float*)light_info.colors, MAX_LIGHTS);
-	
-	// for directional lights
-	shader->setUniform3Array("u_light_direction", (float*)light_info.directions, MAX_LIGHTS);
-
-	// for spotlights
-	shader->setUniform2Array("u_light_cone", (float*)light_info.cone_info, MAX_LIGHTS);
+	// Upload all uniforms related to lighting
+	light_info.bind(shader);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)

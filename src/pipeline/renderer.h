@@ -4,8 +4,6 @@
 
 #include "light.h"
 
-constexpr auto MAX_LIGHTS = 10;
-
 //forward declarations
 class Camera;
 class Skeleton;
@@ -38,23 +36,12 @@ namespace SCN {
 		GFX::Texture* skybox_cubemap;
 
 		SCN::Scene* scene;
-		Vector3f ambient_light = { 0.2f };
 
 		// setup opaque and transparent renderables
 		std::vector<SCN::s_DrawCommand> draw_commands_opaque;
 		std::vector<SCN::s_DrawCommand> draw_commands_transp;
 		
-		struct s_light_uniforms {
-			uint8_t count = 0;
-			float intensities[MAX_LIGHTS];
-			float types[MAX_LIGHTS];
-			vec3 colors[MAX_LIGHTS];
-			vec3 positions[MAX_LIGHTS];
-			vec3 directions[MAX_LIGHTS];
-			vec2 cone_info[MAX_LIGHTS];
-		};
-
-		s_light_uniforms light_info;
+		SCN::LightUniforms light_info;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );

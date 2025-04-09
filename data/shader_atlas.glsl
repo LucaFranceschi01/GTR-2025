@@ -264,29 +264,25 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 
 #include utils
 
-const int MAX_LIGHTS = 10;
-
-const int NO_LIGHT = 		0;
-const int LT_POINT = 		1;
-const int LT_SPOT =			2;
-const int LT_DIRECTIONAL = 	3;
-
 in vec3 v_position;
 in vec3 v_world_position;
 in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
-uniform vec4 u_color;
-uniform sampler2D u_texture;
 uniform float u_time;
-uniform float u_alpha_cutoff;
-
 uniform vec3 u_camera_position;
 
-// start phong inputs
+// start light inputs =========================================================
 uniform vec3 u_ambient_light;
 uniform int u_light_count;
+
+const uint MAX_LIGHTS = 10;
+
+const int NO_LIGHT = 		0;
+const int LT_POINT = 		1;
+const int LT_SPOT =			2;
+const int LT_DIRECTIONAL = 	3;
 
 uniform float u_light_intensity[MAX_LIGHTS];
 uniform float u_light_type[MAX_LIGHTS];
@@ -294,11 +290,33 @@ uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
 uniform vec3 u_light_direction[MAX_LIGHTS];
 uniform vec2 u_light_cone[MAX_LIGHTS]; // alpha_min and alpha_max in radians
+// end light inputs ===========================================================
 
-uniform sampler2D u_texture_metallic_roughness;
+
+// start material-related inputs ==============================================
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+
 uniform float u_roughness;
 // uniform float u_metallic;
-// end phong inputs
+// end material-related inputs ================================================
+
+
+// start maps =================================================================
+const uint MAX_MAPS = 6;
+
+// texture types
+const int ALBEDO				= 0;
+const int EMISSIVE				= 1;
+const int OPACITY				= 2;
+const int METALLIC_ROUGHNESS	= 3;
+const int OCCLUSION				= 4;
+const int NORMALMAP				= 5;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_map;
+uniform sampler2D u_texture_metallic_roughness;
+// end maps ===================================================================
 
 out vec4 FragColor;
 
@@ -324,8 +342,12 @@ void main()
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
+	vec3 texture_normal = texture(u_normal_map, uv).xyz;
+	texture_normal = (texture_normal * 2.0) - 1.0;
+	texture_normal = normalize(texture_normal);
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+	N = perturbNormal(N, -V, uv, texture_normal);
 
 	for (int i=0; i<u_light_count; i++)
 	{

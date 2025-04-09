@@ -98,11 +98,16 @@ void Material::bind(GFX::Shader* shader) {
 			shader->setUniform("u_texture_metallic_roughness", texture, 1);
 		// end metallic-roughness texture
 
+		// start normal texture
+		texture = textures[SCN::eTextureChannel::NORMALMAP].texture;
+
+		if (texture)
+			shader->setUniform("u_normal_map", texture, 2);
+		// end normal texture
+
 		// HERE =====================
 		// TODO: Expand rfor the rest of materials (when you need to)
 		//	texture = emissive_texture;
-		//	texture = metallic_roughness_texture;
-		//	texture = normal_texture;
 		//	texture = occlusion_texture;
 		// ==========================
 

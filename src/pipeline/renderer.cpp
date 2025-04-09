@@ -121,7 +121,13 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam) {
 			light_info.types[light_info.count] = light->light_type;
 			light_info.colors[light_info.count] = light->color;
 			light_info.positions[light_info.count] = gm.getTranslation();
+			
+			// for directional lights
 			light_info.directions[light_info.count] = gm.frontVector();
+
+			// for spotlights
+			light_info.cone_info[light_info.count] = light->cone_info * DEG2RAD;
+
 			light_info.count++;
 			break;
 		}
@@ -266,9 +272,14 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	shader->setUniform1Array("u_light_intensity", light_info.intensities, MAX_LIGHTS);
 	shader->setUniform1Array("u_light_type", light_info.types, MAX_LIGHTS);
-	shader->setUniform3Array("u_light_position", (float*)light_info.positions, MAX_LIGHTS); // position
+	shader->setUniform3Array("u_light_position", (float*)light_info.positions, MAX_LIGHTS); // vector
 	shader->setUniform3Array("u_light_color", (float*)light_info.colors, MAX_LIGHTS);
+	
+	// for directional lights
 	shader->setUniform3Array("u_light_direction", (float*)light_info.directions, MAX_LIGHTS);
+
+	// for spotlights
+	shader->setUniform2Array("u_light_cone", (float*)light_info.cone_info, MAX_LIGHTS);
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)

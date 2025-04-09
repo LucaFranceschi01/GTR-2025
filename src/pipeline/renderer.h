@@ -51,6 +51,7 @@ namespace SCN {
 			vec3 colors[MAX_LIGHTS];
 			vec3 positions[MAX_LIGHTS];
 			vec3 directions[MAX_LIGHTS];
+			vec2 cone_info[MAX_LIGHTS];
 		};
 
 		s_light_uniforms light_info;

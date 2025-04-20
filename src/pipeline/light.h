@@ -53,6 +53,7 @@ namespace SCN {
 		vec2 cone_info[MAX_LIGHTS];
 
 		void bind(GFX::Shader* shader) const;
+		void bind_single(GFX::Shader* shader, int i) const;
 		void add_light(LightEntity* light);
 	};
 };

@@ -32,6 +32,7 @@ namespace SCN {
 	public:
 		bool render_wireframe;
 		bool render_boundaries;
+		bool singlepass_on = false;
 
 		GFX::Texture* skybox_cubemap;
 

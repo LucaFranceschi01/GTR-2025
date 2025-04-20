@@ -6,6 +6,7 @@ depth quad.vs depth.fs
 multi basic.vs multi.fs
 compute test.cs
 singlepass basic.vs single_phong.fs
+multipass basic.vs multi_phong.fs
 
 \test.cs
 #version 430 core
@@ -264,29 +265,25 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 
 #include utils
 
-const int MAX_LIGHTS = 10;
-
-const int NO_LIGHT = 		0;
-const int LT_POINT = 		1;
-const int LT_SPOT =			2;
-const int LT_DIRECTIONAL = 	3;
-
 in vec3 v_position;
 in vec3 v_world_position;
 in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
-uniform vec4 u_color;
-uniform sampler2D u_texture;
 uniform float u_time;
-uniform float u_alpha_cutoff;
-
 uniform vec3 u_camera_position;
 
-// start phong inputs
+// start light inputs =========================================================
 uniform vec3 u_ambient_light;
 uniform int u_light_count;
+
+const uint MAX_LIGHTS = 10;
+
+const int NO_LIGHT = 		0;
+const int LT_POINT = 		1;
+const int LT_SPOT =			2;
+const int LT_DIRECTIONAL = 	3;
 
 uniform float u_light_intensity[MAX_LIGHTS];
 uniform float u_light_type[MAX_LIGHTS];
@@ -294,11 +291,34 @@ uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
 uniform vec3 u_light_direction[MAX_LIGHTS];
 uniform vec2 u_light_cone[MAX_LIGHTS]; // alpha_min and alpha_max in radians
+// end light inputs ===========================================================
 
-uniform sampler2D u_texture_metallic_roughness;
+
+// start material-related inputs ==============================================
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+
 uniform float u_roughness;
 // uniform float u_metallic;
-// end phong inputs
+// end material-related inputs ================================================
+
+
+// start maps =================================================================
+const uint MAX_MAPS = 6;
+
+// texture types
+const int ALBEDO				= 0;
+const int EMISSIVE				= 1;
+const int OPACITY				= 2;
+const int METALLIC_ROUGHNESS	= 3;
+const int OCCLUSION				= 4;
+const int NORMALMAP				= 5;
+
+uniform int u_maps[MAX_MAPS];
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_map;
+uniform sampler2D u_texture_metallic_roughness;
+// end maps ===================================================================
 
 out vec4 FragColor;
 
@@ -307,9 +327,14 @@ void main()
 	vec2 uv = v_uv;
 	vec4 color = u_color; // should always be 1 if not changed somehow
 
-	color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	if (u_maps[ALBEDO]) {
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
 	
-	vec4 metallic_roughness = texture( u_texture_metallic_roughness, v_uv );
+	vec4 metallic_roughness = vec4(0.0);
+	if (u_maps[METALLIC_ROUGHNESS]) {
+		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
+	}
 	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
 	float roughness = u_roughness * metallic_roughness.y; // green is roughness
 
@@ -325,7 +350,14 @@ void main()
 	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+
+	if (u_maps[NORMALMAP]) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	}
 
 	for (int i=0; i<u_light_count; i++)
 	{
@@ -365,6 +397,142 @@ void main()
 		final_light += diffuse_term;
 		final_light += specular_term;
 	}
+
+	FragColor = vec4(final_light * color.xyz, color.a);
+}
+
+\multi_phong.fs
+
+#version 330 core
+
+#include utils
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform float u_time;
+uniform vec3 u_camera_position;
+
+// start light inputs =========================================================
+uniform vec3 u_ambient_light;
+
+const int NO_LIGHT = 		0;
+const int LT_POINT = 		1;
+const int LT_SPOT =			2;
+const int LT_DIRECTIONAL = 	3;
+
+uniform float u_light_intensity;
+uniform float u_light_type;
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform vec3 u_light_direction;
+uniform vec2 u_light_cone; // alpha_min and alpha_max in radians
+// end light inputs ===========================================================
+
+
+// start material-related inputs ==============================================
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+
+uniform float u_roughness;
+// uniform float u_metallic;
+// end material-related inputs ================================================
+
+
+// start maps =================================================================
+const uint MAX_MAPS = 6;
+
+// texture types
+const int ALBEDO				= 0;
+const int EMISSIVE				= 1;
+const int OPACITY				= 2;
+const int METALLIC_ROUGHNESS	= 3;
+const int OCCLUSION				= 4;
+const int NORMALMAP				= 5;
+
+uniform int u_maps[MAX_MAPS];
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_map;
+uniform sampler2D u_texture_metallic_roughness;
+// end maps ===================================================================
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color; // should always be 1 if not changed somehow
+
+	if (u_maps[ALBEDO]) {
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
+	
+	vec4 metallic_roughness = vec4(0.0);
+	if (u_maps[METALLIC_ROUGHNESS]) {
+		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
+	}
+	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
+	float roughness = u_roughness * metallic_roughness.y; // green is roughness
+
+	float shininess = 255.0 - roughness;
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	// add ambient term
+	vec3 final_light = u_ambient_light;
+
+	vec3 diffuse_term, specular_term, light_intensity, L, R;
+	float N_dot_L, R_dot_V, dist, numerator;
+	
+	vec3 N = normalize(v_normal);
+	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+
+	if (u_maps[NORMALMAP]) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	}
+
+	// diffuse
+	if (u_light_type == LT_DIRECTIONAL) {
+		L = u_light_direction;
+		L = normalize(L);
+		light_intensity = u_light_color * u_light_intensity; // No attenuation for directional light
+	} else if (u_light_type == LT_POINT) {
+		L = u_light_position - v_world_position;
+		dist = length(L); // used in light intensity
+		L = normalize(L);
+		light_intensity = u_light_color * u_light_intensity / pow(dist, 2); // light intensity reduced by distance
+	} else if (u_light_type == LT_SPOT) {
+		L = u_light_position - v_world_position;
+		dist = length(L); // used in light intensity
+		L = normalize(L);
+		numerator = clamp(dot(L, normalize(u_light_direction)), 0.0, 1.0) - cos(u_light_cone.y);
+		light_intensity = vec3(0.0);
+		if (numerator >= 0) {
+			light_intensity = u_light_color * u_light_intensity / pow(dist, 2);
+			light_intensity *= numerator;
+			light_intensity /= (cos(u_light_cone.x) - cos(u_light_cone.y));
+		}
+	}
+
+	N_dot_L = clamp(dot(N, L), 0.0, 1.0);
+	diffuse_term = N_dot_L * light_intensity;
+
+	// specular
+	R = reflect(-L, N); // minus because of reflect function first argument is incident
+	R_dot_V = clamp(dot(R, V), 0.0, 1.0);
+
+	specular_term = pow(R_dot_V, shininess) * light_intensity;
+
+	// add diffuse and specular terms
+	final_light += diffuse_term;
+	final_light += specular_term;
 
 	FragColor = vec4(final_light * color.xyz, color.a);
 }

@@ -81,6 +81,28 @@ void SCN::LightUniforms::bind(GFX::Shader* shader) const
 	shader->setUniform2Array("u_light_cone", (float*)cone_info, MAX_LIGHTS);
 }
 
+void SCN::LightUniforms::bind_single(GFX::Shader* shader, int i) const
+{
+	// upload light-related uniforms
+	if (i == 0) {
+		shader->setUniform("u_ambient_light", ambient_light);
+	}
+	else {
+		shader->setUniform("u_ambient_light", Vector3f(0.f));
+	}
+
+	shader->setUniform("u_light_intensity", intensities[i]);
+	shader->setUniform("u_light_type", types[i]);
+	shader->setUniform("u_light_position", positions[i]); // vector
+	shader->setUniform("u_light_color", colors[i]);
+
+	// for directional lights
+	shader->setUniform("u_light_direction", directions[i]);
+
+	// for spotlights
+	shader->setUniform("u_light_cone", cone_info[i]);
+}
+
 void SCN::LightUniforms::add_light(LightEntity* light)
 {
 	Matrix44 gm = light->root.getGlobalMatrix();

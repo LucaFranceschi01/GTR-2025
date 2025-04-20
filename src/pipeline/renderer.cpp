@@ -88,8 +88,6 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 	
 	light_info.count = 0;
 
-	Matrix44 gm;
-
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* entity = scene->entities[i];
 

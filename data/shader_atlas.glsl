@@ -313,6 +313,7 @@ const int METALLIC_ROUGHNESS	= 3;
 const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
 
+uniform int u_maps[MAX_MAPS];
 uniform sampler2D u_texture;
 uniform sampler2D u_normal_map;
 uniform sampler2D u_texture_metallic_roughness;
@@ -325,9 +326,14 @@ void main()
 	vec2 uv = v_uv;
 	vec4 color = u_color; // should always be 1 if not changed somehow
 
-	color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	if (u_maps[ALBEDO]) {
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
 	
-	vec4 metallic_roughness = texture( u_texture_metallic_roughness, v_uv );
+	vec4 metallic_roughness = vec4(0.0);
+	if (u_maps[METALLIC_ROUGHNESS]) {
+		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
+	}
 	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
 	float roughness = u_roughness * metallic_roughness.y; // green is roughness
 
@@ -342,12 +348,15 @@ void main()
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
-	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	texture_normal = (texture_normal * 2.0) - 1.0;
-	texture_normal = normalize(texture_normal);
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
-	N = perturbNormal(N, -V, uv, texture_normal);
+
+	if (u_maps[NORMALMAP]) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	}
 
 	for (int i=0; i<u_light_count; i++)
 	{

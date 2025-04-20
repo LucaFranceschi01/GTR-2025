@@ -219,7 +219,14 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	shader = GFX::Shader::Get("singlepass");
+	if (singlepass_on) {
+		shader = GFX::Shader::Get("singlepass");
+	}
+	else {
+		shader = GFX::Shader::Get("multipass");
+		glDepthFunc(GL_LEQUAL);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -227,7 +234,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	if (!shader)
 		return;
 	shader->enable();
-
+	
 	material->bind(shader);
 
 	//upload uniforms
@@ -241,15 +248,31 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
-	// Upload all uniforms related to lighting
-	light_info.bind(shader);
+	if (singlepass_on) {
+		// Upload all uniforms related to lighting
+		light_info.bind(shader);
+
+		//do the draw call that renders the mesh into the screen
+		mesh->render(GL_TRIANGLES);
+	}
+	else {
+		for (int i = 0; i < light_info.count; i++) {
+			if (i == 0) {
+				glDisable(GL_BLEND);
+			}
+			else {
+				glEnable(GL_BLEND);
+			}
+
+			light_info.bind_single(shader, i);
+
+			mesh->render(GL_TRIANGLES);
+		}
+	}
 
 	// Render just the verticies as a wireframe
 	if (render_wireframe)
 		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-
-	//do the draw call that renders the mesh into the screen
-	mesh->render(GL_TRIANGLES);
 
 	//disable shader
 	shader->disable();
@@ -257,6 +280,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	//set the render state as it was before to avoid problems with future renders
 	glDisable(GL_BLEND);
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	glDepthFunc(GL_LESS);
 }
 
 #ifndef SKIP_IMGUI
@@ -269,6 +293,7 @@ void Renderer::showUI()
 
 	//add here your stuff
 	//...
+	ImGui::Checkbox("Singlepass ON", &singlepass_on);
 }
 
 #else

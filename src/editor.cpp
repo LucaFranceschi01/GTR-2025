@@ -498,7 +498,16 @@ void SceneEditor::inspectObject(SCN::Node* node)
 	{
 		inspectObject(node->material);
 		ImGui::TreePop();
-	}
+
+		ImGui::Separator();
+
+		// we rely on that shininess is the opposite of roughness
+		float shininess = 1.f - node->material->roughness_factor;
+
+		ImGui::SliderFloat("Shininess factor", &shininess, 0.f, 1.f);
+
+		node->material->roughness_factor = 1 - shininess;
+}
 
 	ImGui::PopStyleColor();
 

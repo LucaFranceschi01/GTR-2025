@@ -37,7 +37,8 @@ namespace SCN {
 		bool singlepass_on = false;
 
 		GFX::Texture* skybox_cubemap;
-		GFX::FBO* fbo;
+
+		GFX::FBO* shadow_fbos[MAX_LIGHTS];
 
 		SCN::Scene* scene;
 
@@ -55,6 +56,8 @@ namespace SCN {
 
 		void parseSceneEntities(SCN::Scene* scene, Camera* camera);
 
+		void generateShadowMaps();
+
 		//renders several elements of the scene
 		void renderScene(SCN::Scene* scene, Camera* camera);
 
@@ -63,6 +66,8 @@ namespace SCN {
 
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+
+		void renderPlain(Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
 		void showUI();
 		

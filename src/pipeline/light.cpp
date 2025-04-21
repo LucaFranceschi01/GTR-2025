@@ -119,5 +119,8 @@ void SCN::LightUniforms::add_light(LightEntity* light)
 	// for spotlights
 	cone_info[count] = light->cone_info * DEG2RAD;
 
+	// for shadowmap purposes
+	entities[count] = light;
+
 	count++;
 }

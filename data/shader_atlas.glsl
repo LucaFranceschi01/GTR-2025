@@ -7,6 +7,7 @@ multi basic.vs multi.fs
 compute test.cs
 singlepass basic.vs single_phong.fs
 multipass basic.vs multi_phong.fs
+plain basic.vs plain.fs
 
 \test.cs
 #version 430 core
@@ -26,7 +27,7 @@ in vec3 a_normal;
 in vec2 a_coord;
 in vec4 a_color;
 
-uniform vec3 u_camera_pos;
+uniform vec3 u_camera_position;
 
 uniform mat4 u_model;
 uniform mat4 u_viewprojection;
@@ -201,7 +202,7 @@ in vec2 a_coord;
 
 in mat4 u_model;
 
-uniform vec3 u_camera_pos;
+uniform vec3 u_camera_position;
 
 uniform mat4 u_viewprojection;
 
@@ -278,7 +279,7 @@ uniform vec3 u_camera_position;
 uniform vec3 u_ambient_light;
 uniform int u_light_count;
 
-const uint MAX_LIGHTS = 10;
+const uint MAX_LIGHTS = 5;
 
 const int NO_LIGHT = 		0;
 const int LT_POINT = 		1;
@@ -535,4 +536,23 @@ void main()
 	final_light += specular_term;
 
 	FragColor = vec4(final_light * color.xyz, color.a);
+}
+
+\plain.fs
+
+#version 330 core
+
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+
+out vec4 FragColor;
+
+void main ()
+{
+	vec4 color = u_color;
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

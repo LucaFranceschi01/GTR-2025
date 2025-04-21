@@ -36,6 +36,11 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
+
+	for (int i = 0; i < MAX_LIGHTS; i++) {
+		shadow_fbos[i] = new GFX::FBO();
+		shadow_fbos[i]->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
+	}
 }
 
 void Renderer::setupScene()
@@ -44,11 +49,6 @@ void Renderer::setupScene()
 		skybox_cubemap = GFX::Texture::Get(std::string(scene->base_folder + "/" + scene->skybox_filename).c_str());
 	else
 		skybox_cubemap = nullptr;
-
-	GFX::Texture* texture = new GFX::Texture(GFX::SHADOW_RES, GFX::SHADOW_RES);
-	fbo = new GFX::FBO();
-	fbo->setTexture(texture);
-	fbo->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
 }
 
 void Renderer::parseNodes(SCN::Node* node, Camera* cam)
@@ -139,12 +139,61 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 		});
 }
 
+void Renderer::generateShadowMaps()
+{
+	for (int i = 0; i < light_info.count; i++) {
+		shadow_fbos[i]->bind();
+		glEnable(GL_DEPTH_TEST);
+		glColorMask(false, false, false, false);
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		LightEntity* light = light_info.entities[i];
+		Camera light_camera;
+
+		mat4 light_model = light->root.getGlobalMatrix();
+
+		light_camera.lookAt(light_model.getTranslation(), light_model * vec3(0.f, 0.f, -1.f), vec3(0.f, 1.f, 0.f));
+
+		float half_size = light->area / 2.f;
+
+		if (light->light_type == SCN::eLightType::DIRECTIONAL) {
+			light_camera.setOrthographic(
+				-half_size, half_size,
+				-half_size, half_size,
+				light->near_distance, light->max_distance
+			);
+		}
+		else {
+			glDisable(GL_DEPTH_TEST);
+			glColorMask(true, true, true, true);
+			shadow_fbos[i]->unbind();
+			continue;
+		}
+		/*
+		else if (light->light_type == SCN::eLightType::SPOT) {
+
+		}
+		else {
+			continue;
+		}*/
+
+		for (s_DrawCommand command : draw_commands_opaque) {
+			renderPlain(&light_camera, command.model, command.mesh, command.material);
+		}
+
+		glDisable(GL_DEPTH_TEST);
+		glColorMask(true, true, true, true);
+		shadow_fbos[i]->unbind();
+	}
+}
+
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 {
 	this->scene = scene;
 	setupScene();
 
 	parseSceneEntities(scene, camera);
+	generateShadowMaps();
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
@@ -286,6 +335,40 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glDisable(GL_BLEND);
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	glDepthFunc(GL_LESS);
+}
+
+void Renderer::renderPlain(Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
+{
+	//in case there is nothing to do
+	if (!mesh || !mesh->getNumVertices() || !material)
+		return;
+	assert(glGetError() == GL_NO_ERROR);
+
+	//define locals to simplify coding
+	GFX::Shader* shader = GFX::Shader::Get("plain");
+
+	//glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	material->bind(shader);
+
+	//upload uniforms
+	shader->setUniform("u_model", model);
+
+	// Upload camera uniforms
+	shader->setUniform("u_viewprojection", light_camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", light_camera->eye);
+
+	light_info.bind_single(shader, 0);
+	mesh->render(GL_TRIANGLES);
+
+	//disable shader
+	shader->disable();
 }
 
 #ifndef SKIP_IMGUI

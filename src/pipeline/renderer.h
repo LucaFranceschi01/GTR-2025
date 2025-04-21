@@ -11,6 +11,8 @@ namespace GFX {
 	class Shader;
 	class Mesh;
 	class FBO;
+
+	constexpr int SHADOW_RES = 1024;
 }
 
 namespace SCN {
@@ -35,6 +37,7 @@ namespace SCN {
 		bool singlepass_on = false;
 
 		GFX::Texture* skybox_cubemap;
+		GFX::FBO* fbo;
 
 		SCN::Scene* scene;
 

@@ -44,6 +44,11 @@ void Renderer::setupScene()
 		skybox_cubemap = GFX::Texture::Get(std::string(scene->base_folder + "/" + scene->skybox_filename).c_str());
 	else
 		skybox_cubemap = nullptr;
+
+	GFX::Texture* texture = new GFX::Texture(GFX::SHADOW_RES, GFX::SHADOW_RES);
+	fbo = new GFX::FBO();
+	fbo->setTexture(texture);
+	fbo->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
 }
 
 void Renderer::parseNodes(SCN::Node* node, Camera* cam)

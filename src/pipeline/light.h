@@ -2,7 +2,7 @@
 
 #include "scene.h"
 
-constexpr auto MAX_LIGHTS = 10;
+constexpr auto MAX_LIGHTS = 5;
 
 namespace GFX {
 	class Shader;
@@ -51,6 +51,11 @@ namespace SCN {
 		vec3 positions[MAX_LIGHTS];
 		vec3 directions[MAX_LIGHTS];
 		vec2 cone_info[MAX_LIGHTS];
+		LightEntity* entities[MAX_LIGHTS];
+		Matrix44 viewprojections[MAX_LIGHTS];
+		int cast_shadows[MAX_LIGHTS];
+		float shadow_biases[MAX_LIGHTS];
+
 
 		void bind(GFX::Shader* shader) const;
 		void bind_single(GFX::Shader* shader, int i) const;

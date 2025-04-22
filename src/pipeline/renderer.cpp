@@ -182,6 +182,10 @@ void Renderer::generateShadowMaps()
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
 		}
 
+		for (s_DrawCommand command : draw_commands_transp) {
+			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
+		}
+
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
 		shadow_fbos[i]->unbind();	//Finishes painting on the texture

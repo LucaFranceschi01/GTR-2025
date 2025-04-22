@@ -12,7 +12,7 @@ namespace GFX {
 	class Mesh;
 	class FBO;
 
-	constexpr int SHADOW_RES = 1024;
+	constexpr int SHADOW_RES = 2048;
 }
 
 namespace SCN {

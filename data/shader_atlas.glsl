@@ -260,11 +260,62 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 	return normalize(TBN * normal_pixel);
 }
 
+\shadows
+
+// start shadowmaps inputs ====================================================
+uniform int u_light_cast_shadows;
+uniform sampler2D u_shadowmap;
+uniform mat4 u_shadowmap_viewprojection;
+uniform float u_shadowmap_bias;
+// end shadowmaps inputs ======================================================
+
+float compute_shadow_factor(vec3 world_poosition)
+{
+	//project to light homogeneous space
+	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_poosition,1.0);
+	proj_pos.z -= u_shadowmap_bias;
+
+	//from homogeneus space to clip space
+	vec4 proj_pos_clip = proj_pos / proj_pos.w;
+
+	//from clip space to uv space
+	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
+
+	//get point depth in uv space
+	float real_depth = proj_pos_uv.z;
+
+	//read depth from depth buffer in uv space
+	float shadow_depth = texture( u_shadowmap, proj_pos_uv.xy).x;
+
+	if( shadow_depth < real_depth )
+		return 0.0;
+	return 1.0;
+}
+
+\constants
+
+// light types
+const int NO_LIGHT = 		0;
+const int LT_POINT = 		1;
+const int LT_SPOT =			2;
+const int LT_DIRECTIONAL = 	3;
+const uint MAX_LIGHTS = 5;
+
+// texture types
+const int ALBEDO				= 0;
+const int EMISSIVE				= 1;
+const int OPACITY				= 2;
+const int METALLIC_ROUGHNESS	= 3;
+const int OCCLUSION				= 4;
+const int NORMALMAP				= 5;
+const uint MAX_MAPS = 6;
+
 \single_phong.fs
 
 #version 330 core
 
 #include utils
+#include constants
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -278,13 +329,6 @@ uniform vec3 u_camera_position;
 // start light inputs =========================================================
 uniform vec3 u_ambient_light;
 uniform int u_light_count;
-
-const uint MAX_LIGHTS = 5;
-
-const int NO_LIGHT = 		0;
-const int LT_POINT = 		1;
-const int LT_SPOT =			2;
-const int LT_DIRECTIONAL = 	3;
 
 uniform float u_light_intensity[MAX_LIGHTS];
 uniform float u_light_type[MAX_LIGHTS];
@@ -305,16 +349,6 @@ uniform float u_roughness;
 
 
 // start maps =================================================================
-const uint MAX_MAPS = 6;
-
-// texture types
-const int ALBEDO				= 0;
-const int EMISSIVE				= 1;
-const int OPACITY				= 2;
-const int METALLIC_ROUGHNESS	= 3;
-const int OCCLUSION				= 4;
-const int NORMALMAP				= 5;
-
 uniform int u_maps[MAX_MAPS];
 uniform sampler2D u_texture;
 uniform sampler2D u_normal_map;
@@ -407,6 +441,8 @@ void main()
 #version 330 core
 
 #include utils
+#include constants
+#include shadows
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -419,11 +455,6 @@ uniform vec3 u_camera_position;
 
 // start light inputs =========================================================
 uniform vec3 u_ambient_light;
-
-const int NO_LIGHT = 		0;
-const int LT_POINT = 		1;
-const int LT_SPOT =			2;
-const int LT_DIRECTIONAL = 	3;
 
 uniform float u_light_intensity;
 uniform float u_light_type;
@@ -444,55 +475,13 @@ uniform float u_roughness;
 
 
 // start maps =================================================================
-const uint MAX_MAPS = 6;
-
-// texture types
-const int ALBEDO				= 0;
-const int EMISSIVE				= 1;
-const int OPACITY				= 2;
-const int METALLIC_ROUGHNESS	= 3;
-const int OCCLUSION				= 4;
-const int NORMALMAP				= 5;
-
 uniform int u_maps[MAX_MAPS];
 uniform sampler2D u_texture;
 uniform sampler2D u_normal_map;
 uniform sampler2D u_texture_metallic_roughness;
 // end maps ===================================================================
 
-
-// start shadowmaps inputs ====================================================
-uniform int u_light_cast_shadows;
-uniform sampler2D u_shadowmap;
-uniform mat4 u_shadowmap_viewprojection;
-uniform float u_shadowmap_bias;
-// end shadowmaps inputs ======================================================
-
-
 out vec4 FragColor;
-
-
-float computeShadow (vec3 world_poosition)
-{
-	//project to light homogeneous space
-	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_poosition,1.0);
-	proj_pos.z -= u_shadowmap_bias;
-
-	//from homogeneus space to clip space
-	vec4 proj_pos_clip = proj_pos / proj_pos.w;
-
-	//from clip space to uv space
-	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
-
-	//get point depth in uv space
-	float real_depth = proj_pos_uv.z;
-
-	//read depth from depth buffer in uv space
-	float shadow_depth = texture( u_shadowmap, proj_pos_uv.xy).x;
-	if( shadow_depth < real_depth )
-		return 0.0;
-	return 1.0;
-	}
 
 void main()
 {
@@ -532,24 +521,33 @@ void main()
 	}
 
 	// diffuse
-	if (u_light_type == LT_DIRECTIONAL) {
+	if (u_light_type == LT_DIRECTIONAL)
+	{
 		L = u_light_direction;
 		float shadow_factor = 1.0;
 		if (u_light_cast_shadows == 1) // La luz tiene una sombra
-			shadow_factor = computeShadow(v_world_position);
+			shadow_factor = compute_shadow_factor(v_world_position);
 		L = normalize(L);
+		
 		light_intensity = u_light_color * u_light_intensity * shadow_factor; // No attenuation for directional light
-	} else if (u_light_type == LT_POINT) {
+	}
+	else if (u_light_type == LT_POINT)
+	{
 		L = u_light_position - v_world_position;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
+
 		light_intensity = u_light_color * u_light_intensity / pow(dist, 2); // light intensity reduced by distance
-	} else if (u_light_type == LT_SPOT) {
+	}
+	else if (u_light_type == LT_SPOT)
+	{
 		L = u_light_position - v_world_position;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
+
 		numerator = clamp(dot(L, normalize(u_light_direction)), 0.0, 1.0) - cos(u_light_cone.y);
 		light_intensity = vec3(0.0);
+		
 		if (numerator >= 0) {
 			light_intensity = u_light_color * u_light_intensity / pow(dist, 2);
 			light_intensity *= numerator;
@@ -577,14 +575,24 @@ void main()
 
 #version 330 core
 
+#include constants
+
+in vec2 v_uv;
+
 uniform vec4 u_color;
 uniform float u_alpha_cutoff;
+uniform sampler2D u_texture;
+uniform int u_maps[MAX_MAPS];
 
 out vec4 FragColor;
 
 void main ()
 {
-	vec4 color = u_color;
+	vec4 color = u_color; // should always be 1 if not changed somehow
+
+	if (u_maps[ALBEDO] != 0){
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
 
 	if(color.a < u_alpha_cutoff)
 		discard;

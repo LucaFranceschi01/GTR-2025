@@ -79,6 +79,10 @@ void SCN::LightUniforms::bind(GFX::Shader* shader) const
 
 	// for spotlights
 	shader->setUniform2Array("u_light_cone", (float*)cone_info, MAX_LIGHTS);
+
+	shader->setMatrix44Array("u_shadowmap_viewprojections", (Matrix44*)viewprojections, MAX_LIGHTS);
+	shader->setUniform1Array("u_light_cast_shadowss", cast_shadows, MAX_LIGHTS);
+	shader->setUniform1Array("u_shadowmap_biases", shadow_biases, MAX_LIGHTS);
 }
 
 void SCN::LightUniforms::bind_single(GFX::Shader* shader, int i) const
@@ -121,6 +125,8 @@ void SCN::LightUniforms::add_light(LightEntity* light)
 
 	// for shadowmap purposes
 	entities[count] = light;
+	cast_shadows[count] = static_cast<int>(light->cast_shadows);
+	shadow_biases[count] = light->shadow_bias;
 
 	count++;
 }

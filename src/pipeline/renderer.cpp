@@ -174,12 +174,11 @@ void Renderer::generateShadowMaps()
 				-half_size, half_size,
 				light->near_distance, light->max_distance
 			);
-			light_shadow_viewproj[i] = light_camera.viewprojection_matrix;
+			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
 		else {
 			glDisable(GL_DEPTH_TEST);
 			glColorMask(true, true, true, true);
-			//shadow_fbos[i]->unbind();
 			continue;
 		}
 		/*
@@ -200,7 +199,6 @@ void Renderer::generateShadowMaps()
 
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
-		//shadow_fbos[i]->unbind();	//Finishes painting on the texture
 	}
 	shadow_atlas->unbind();
 }
@@ -320,6 +318,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
+	shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
+
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
@@ -328,7 +328,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		mesh->render(GL_TRIANGLES);
 	}
 	else {
-		shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
 		for (int i = 0; i < light_info.count; i++) {
 
 			if (i == 0) {
@@ -344,7 +343,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 			if (light->cast_shadows) {
 				shader->setUniform("u_light_cast_shadows", 1);
-				shader->setUniform("u_shadowmap_viewprojection", light_shadow_viewproj[i]);
+				shader->setUniform("u_shadowmap_viewprojection", light_info.viewprojections[i]);
 				shader->setUniform("u_shadowmap_bias", light->shadow_bias);
 				shader->setUniform("u_shadow_atlas_row", i / GFX::SHADOW_ATLAS_COLS);
 				shader->setUniform("u_shadow_atlas_col", i % GFX::SHADOW_ATLAS_COLS);

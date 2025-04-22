@@ -39,9 +39,7 @@ namespace SCN {
 
 		GFX::Texture* skybox_cubemap;
 
-		//GFX::FBO* shadow_fbos[MAX_LIGHTS];
 		GFX::FBO* shadow_atlas;
-		Matrix44 light_shadow_viewproj[MAX_LIGHTS];
 
 		SCN::Scene* scene;
 

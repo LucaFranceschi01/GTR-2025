@@ -147,6 +147,14 @@ void Renderer::generateShadowMaps()
 		glColorMask(false, false, false, false);
 		glClear(GL_DEPTH_BUFFER_BIT);
 
+		if (front_face_culling == false) {
+			glDisable(GL_CULL_FACE);
+		}
+		else {
+			glEnable(GL_CULL_FACE);
+			//glFrontFace(GL_CW);
+		}
+
 		LightEntity* light = light_info.entities[i];
 		Camera light_camera;
 
@@ -185,6 +193,10 @@ void Renderer::generateShadowMaps()
 		for (s_DrawCommand command : draw_commands_transp) {
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
 		}
+
+		// Disable the default front face culling
+		glDisable(GL_CULL_FACE);
+
 
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
@@ -402,6 +414,7 @@ void Renderer::showUI()
 	//add here your stuff
 	//...
 	ImGui::Checkbox("Singlepass ON", &singlepass_on);
+	ImGui::Checkbox("Front Face Culling ON", &front_face_culling);
 }
 
 #else

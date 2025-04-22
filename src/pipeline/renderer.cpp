@@ -37,10 +37,14 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
 
-	for (int i = 0; i < MAX_LIGHTS; i++) {
+	/*for (int i = 0; i < MAX_LIGHTS; i++) {
 		shadow_fbos[i] = new GFX::FBO();
 		shadow_fbos[i]->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
-	}
+	}*/
+
+	shadow_atlas = new GFX::FBO();
+	int nrows = MAX_LIGHTS / GFX::SHADOW_ATLAS_COLS + 1;
+	shadow_atlas->setDepthOnly(GFX::SHADOW_RES * GFX::SHADOW_ATLAS_COLS, GFX::SHADOW_RES * nrows);
 }
 
 void Renderer::setupScene()
@@ -141,8 +145,16 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 
 void Renderer::generateShadowMaps()
 {
+	shadow_atlas->bind();
 	for (int i = 0; i < light_info.count; i++) {
-		shadow_fbos[i]->bind();		//Starts painting on the texture
+		//shadow_fbos[i]->bind();		//Starts painting on the texture
+
+		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
+		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
+
+		glViewport(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+		glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+
 		glEnable(GL_DEPTH_TEST);
 		glColorMask(false, false, false, false);
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -167,7 +179,7 @@ void Renderer::generateShadowMaps()
 		else {
 			glDisable(GL_DEPTH_TEST);
 			glColorMask(true, true, true, true);
-			shadow_fbos[i]->unbind();
+			//shadow_fbos[i]->unbind();
 			continue;
 		}
 		/*
@@ -188,8 +200,9 @@ void Renderer::generateShadowMaps()
 
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
-		shadow_fbos[i]->unbind();	//Finishes painting on the texture
+		//shadow_fbos[i]->unbind();	//Finishes painting on the texture
 	}
+	shadow_atlas->unbind();
 }
 
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
@@ -315,6 +328,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		mesh->render(GL_TRIANGLES);
 	}
 	else {
+		shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
 		for (int i = 0; i < light_info.count; i++) {
 
 			if (i == 0) {
@@ -328,12 +342,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 			LightEntity* light = light_info.entities[i];
 
-			//IMPLEMENTACION DEL SHADOW MAP//
-			if (light->cast_shadows && shadow_fbos[i]) {
+			if (light->cast_shadows) {
 				shader->setUniform("u_light_cast_shadows", 1);
-				shader->setUniform("u_shadowmap", shadow_fbos[i]->depth_texture, 8);
 				shader->setUniform("u_shadowmap_viewprojection", light_shadow_viewproj[i]);
 				shader->setUniform("u_shadowmap_bias", light->shadow_bias);
+				shader->setUniform("u_shadow_atlas_row", i / GFX::SHADOW_ATLAS_COLS);
+				shader->setUniform("u_shadow_atlas_col", i % GFX::SHADOW_ATLAS_COLS);
 			}
 			else {
 				shader->setUniform("u_light_cast_shadows", 0);

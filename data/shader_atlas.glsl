@@ -264,28 +264,36 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 
 // start shadowmaps inputs ====================================================
 uniform int u_light_cast_shadows;
-uniform sampler2D u_shadowmap;
+uniform sampler2D u_shadow_atlas;
+uniform int u_shadow_atlas_row;
+uniform int u_shadow_atlas_col;
 uniform mat4 u_shadowmap_viewprojection;
 uniform float u_shadowmap_bias;
 // end shadowmaps inputs ======================================================
 
+const vec2 shadow_atlas_size = vec2(SHADOW_ATLAS_COLS, MAX_LIGHTS / SHADOW_ATLAS_COLS + 1);
+
 float compute_shadow_factor(vec3 world_poosition)
 {
-	//project to light homogeneous space
+	// project to light homogeneous space
 	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_poosition,1.0);
 	proj_pos.z -= u_shadowmap_bias;
 
-	//from homogeneus space to clip space
+	// from homogeneus space to clip space
 	vec4 proj_pos_clip = proj_pos / proj_pos.w;
 
-	//from clip space to uv space
+	// from clip space to uv space
 	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
 
-	//get point depth in uv space
+	// get point depth in uv space
 	float real_depth = proj_pos_uv.z;
 
-	//read depth from depth buffer in uv space
-	float shadow_depth = texture( u_shadowmap, proj_pos_uv.xy).x;
+	// take into account the atlas offset
+	vec2 shadow_atlas_offset = vec2(u_shadow_atlas_col, u_shadow_atlas_row);
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+
+	// read depth from depth buffer in uv space
+	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
 
 	if( shadow_depth < real_depth )
 		return 0.0;
@@ -309,6 +317,8 @@ const int METALLIC_ROUGHNESS	= 3;
 const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
 const uint MAX_MAPS = 6;
+
+const int SHADOW_ATLAS_COLS = 3;
 
 \single_phong.fs
 

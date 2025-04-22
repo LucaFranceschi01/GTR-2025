@@ -592,6 +592,10 @@ void main()
 		L = u_light_position - v_world_position;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
+		
+		float shadow_factor = 1.0;
+		if (u_light_cast_shadows == 1) // La luz tiene una sombra
+			shadow_factor = compute_shadow_factor(v_world_position);
 
 		numerator = clamp(dot(L, normalize(u_light_direction)), 0.0, 1.0) - cos(u_light_cone.y);
 		light_intensity = vec3(0.0);
@@ -600,6 +604,7 @@ void main()
 			light_intensity = u_light_color * u_light_intensity / pow(dist, 2);
 			light_intensity *= numerator;
 			light_intensity /= (cos(u_light_cone.x) - cos(u_light_cone.y));
+			light_intensity *= shadow_factor;
 		}
 	}
 

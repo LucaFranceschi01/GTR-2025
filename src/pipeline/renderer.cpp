@@ -147,7 +147,6 @@ void Renderer::generateShadowMaps()
 {
 	shadow_atlas->bind();
 	for (int i = 0; i < light_info.count; i++) {
-		//shadow_fbos[i]->bind();		//Starts painting on the texture
 
 		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
 		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
@@ -168,7 +167,7 @@ void Renderer::generateShadowMaps()
 
 		float half_size = light->area / 2.f;
 
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) {	//We assume it only has directional ligths (for the moment) 
+		if (light->light_type == SCN::eLightType::DIRECTIONAL) { // We assume it only has directional ligths (for the moment)
 			light_camera.setOrthographic(
 				-half_size, half_size,
 				-half_size, half_size,
@@ -176,18 +175,15 @@ void Renderer::generateShadowMaps()
 			);
 			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
+		else if (light->light_type == SCN::eLightType::SPOT) {
+			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
+			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
+		}
 		else {
 			glDisable(GL_DEPTH_TEST);
 			glColorMask(true, true, true, true);
 			continue;
 		}
-		/*
-		else if (light->light_type == SCN::eLightType::SPOT) {
-
-		}
-		else {
-			continue;
-		}*/
 
 		for (s_DrawCommand command : draw_commands_opaque) {
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
@@ -338,19 +334,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 			}
 			
 			light_info.bind_single(shader, i);
-
-			LightEntity* light = light_info.entities[i];
-
-			if (light->cast_shadows) {
-				shader->setUniform("u_light_cast_shadows", 1);
-				shader->setUniform("u_shadowmap_viewprojection", light_info.viewprojections[i]);
-				shader->setUniform("u_shadowmap_bias", light->shadow_bias);
-				shader->setUniform("u_shadow_atlas_row", i / GFX::SHADOW_ATLAS_COLS);
-				shader->setUniform("u_shadow_atlas_col", i % GFX::SHADOW_ATLAS_COLS);
-			}
-			else {
-				shader->setUniform("u_light_cast_shadows", 0);
-			}
 
 			mesh->render(GL_TRIANGLES);
 		}

@@ -37,10 +37,14 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
 
-	for (int i = 0; i < MAX_LIGHTS; i++) {
+	/*for (int i = 0; i < MAX_LIGHTS; i++) {
 		shadow_fbos[i] = new GFX::FBO();
 		shadow_fbos[i]->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
-	}
+	}*/
+
+	shadow_atlas = new GFX::FBO();
+	int nrows = MAX_LIGHTS / GFX::SHADOW_ATLAS_COLS + 1;
+	shadow_atlas->setDepthOnly(GFX::SHADOW_RES * GFX::SHADOW_ATLAS_COLS, GFX::SHADOW_RES * nrows);
 }
 
 void Renderer::setupScene()
@@ -141,8 +145,15 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 
 void Renderer::generateShadowMaps()
 {
+	shadow_atlas->bind();
 	for (int i = 0; i < light_info.count; i++) {
-		shadow_fbos[i]->bind();		//Starts painting on the texture
+
+		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
+		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
+
+		glViewport(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+		glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+
 		glEnable(GL_DEPTH_TEST);
 		glColorMask(false, false, false, false);
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -164,27 +175,23 @@ void Renderer::generateShadowMaps()
 
 		float half_size = light->area / 2.f;
 
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) {	//We assume it only has directional ligths (for the moment) 
+		if (light->light_type == SCN::eLightType::DIRECTIONAL) { // We assume it only has directional ligths (for the moment)
 			light_camera.setOrthographic(
 				-half_size, half_size,
 				-half_size, half_size,
 				light->near_distance, light->max_distance
 			);
-			light_shadow_viewproj[i] = light_camera.viewprojection_matrix;
+			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
+		}
+		else if (light->light_type == SCN::eLightType::SPOT) {
+			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
+			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
 		else {
 			glDisable(GL_DEPTH_TEST);
 			glColorMask(true, true, true, true);
-			shadow_fbos[i]->unbind();
 			continue;
 		}
-		/*
-		else if (light->light_type == SCN::eLightType::SPOT) {
-
-		}
-		else {
-			continue;
-		}*/
 
 		for (s_DrawCommand command : draw_commands_opaque) {
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
@@ -200,8 +207,8 @@ void Renderer::generateShadowMaps()
 
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
-		shadow_fbos[i]->unbind();	//Finishes painting on the texture
 	}
+	shadow_atlas->unbind();
 }
 
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
@@ -319,6 +326,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
+	shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
+
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
@@ -337,19 +346,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 			}
 			
 			light_info.bind_single(shader, i);
-
-			LightEntity* light = light_info.entities[i];
-
-			//IMPLEMENTACION DEL SHADOW MAP//
-			if (light->cast_shadows && shadow_fbos[i]) {
-				shader->setUniform("u_light_cast_shadows", 1);
-				shader->setUniform("u_shadowmap", shadow_fbos[i]->depth_texture, 8);
-				shader->setUniform("u_shadowmap_viewprojection", light_shadow_viewproj[i]);
-				shader->setUniform("u_shadowmap_bias", light->shadow_bias);
-			}
-			else {
-				shader->setUniform("u_light_cast_shadows", 0);
-			}
 
 			mesh->render(GL_TRIANGLES);
 		}

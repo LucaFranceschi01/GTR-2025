@@ -263,29 +263,69 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 \shadows
 
 // start shadowmaps inputs ====================================================
+uniform sampler2D u_shadow_atlas;
+
 uniform int u_light_cast_shadows;
-uniform sampler2D u_shadowmap;
 uniform mat4 u_shadowmap_viewprojection;
 uniform float u_shadowmap_bias;
+uniform int u_shadow_atlas_row;
+uniform int u_shadow_atlas_col;
+
+uniform int u_light_cast_shadowss[MAX_LIGHTS];
+uniform mat4 u_shadowmap_viewprojections[MAX_LIGHTS];
+uniform float u_shadowmap_biases[MAX_LIGHTS];
 // end shadowmaps inputs ======================================================
 
-float compute_shadow_factor(vec3 world_poosition)
+const vec2 shadow_atlas_size = vec2(SHADOW_ATLAS_COLS, MAX_LIGHTS / SHADOW_ATLAS_COLS + 1);
+
+float compute_shadow_factor(vec3 world_position)
 {
-	//project to light homogeneous space
-	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_poosition,1.0);
+	// project to light homogeneous space
+	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_position, 1.0);
 	proj_pos.z -= u_shadowmap_bias;
 
-	//from homogeneus space to clip space
+	// from homogeneus space to clip space
 	vec4 proj_pos_clip = proj_pos / proj_pos.w;
 
-	//from clip space to uv space
+	// from clip space to uv space
 	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
 
-	//get point depth in uv space
+	// get point depth in uv space
 	float real_depth = proj_pos_uv.z;
 
-	//read depth from depth buffer in uv space
-	float shadow_depth = texture( u_shadowmap, proj_pos_uv.xy).x;
+	// take into account the atlas offset
+	vec2 shadow_atlas_offset = vec2(u_shadow_atlas_col, u_shadow_atlas_row);
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+
+	// read depth from depth buffer in uv space
+	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
+
+	if( shadow_depth < real_depth )
+		return 0.0;
+	return 1.0;
+}
+
+float compute_shadow_factor_singlepass(int i, vec3 world_position)
+{
+	// project to light homogeneous space
+	vec4 proj_pos = u_shadowmap_viewprojections[i] * vec4(world_position, 1.0);
+	proj_pos.z -= u_shadowmap_biases[i];
+
+	// from homogeneus space to clip space
+	vec4 proj_pos_clip = proj_pos / proj_pos.w;
+
+	// from clip space to uv space
+	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
+
+	// get point depth in uv space
+	float real_depth = proj_pos_uv.z;
+
+	// take into account the atlas offset
+	vec2 shadow_atlas_offset = vec2(mod(i, SHADOW_ATLAS_COLS), floor(i / SHADOW_ATLAS_COLS));
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+
+	// read depth from depth buffer in uv space
+	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
 
 	if( shadow_depth < real_depth )
 		return 0.0;
@@ -310,12 +350,15 @@ const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
 const uint MAX_MAPS = 6;
 
+const int SHADOW_ATLAS_COLS = 3;
+
 \single_phong.fs
 
 #version 330 core
 
 #include utils
 #include constants
+#include shadows
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -400,7 +443,12 @@ void main()
 		if (u_light_type[i] == LT_DIRECTIONAL) {
 			L = u_light_direction[i];
 			L = normalize(L);
-			light_intensity = u_light_color[i] * u_light_intensity[i]; // No attenuation for directional light
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+
+			light_intensity = u_light_color[i] * u_light_intensity[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_type[i] == LT_POINT) {
 			L = u_light_position[i] - v_world_position;
 			dist = length(L); // used in light intensity
@@ -544,6 +592,10 @@ void main()
 		L = u_light_position - v_world_position;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
+		
+		float shadow_factor = 1.0;
+		if (u_light_cast_shadows == 1) // La luz tiene una sombra
+			shadow_factor = compute_shadow_factor(v_world_position);
 
 		numerator = clamp(dot(L, normalize(u_light_direction)), 0.0, 1.0) - cos(u_light_cone.y);
 		light_intensity = vec3(0.0);
@@ -552,6 +604,7 @@ void main()
 			light_intensity = u_light_color * u_light_intensity / pow(dist, 2);
 			light_intensity *= numerator;
 			light_intensity /= (cos(u_light_cone.x) - cos(u_light_cone.y));
+			light_intensity *= shadow_factor;
 		}
 	}
 

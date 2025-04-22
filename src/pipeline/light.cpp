@@ -4,6 +4,7 @@
 #include "../utils/utils.h"
 
 #include "gfx/shader.h"
+#include "renderer.h"
 
 SCN::LightEntity::LightEntity()
 {
@@ -79,6 +80,10 @@ void SCN::LightUniforms::bind(GFX::Shader* shader) const
 
 	// for spotlights
 	shader->setUniform2Array("u_light_cone", (float*)cone_info, MAX_LIGHTS);
+
+	shader->setMatrix44Array("u_shadowmap_viewprojections", (Matrix44*)viewprojections, MAX_LIGHTS);
+	shader->setUniform1Array("u_light_cast_shadowss", cast_shadows, MAX_LIGHTS);
+	shader->setUniform1Array("u_shadowmap_biases", shadow_biases, MAX_LIGHTS);
 }
 
 void SCN::LightUniforms::bind_single(GFX::Shader* shader, int i) const
@@ -101,6 +106,12 @@ void SCN::LightUniforms::bind_single(GFX::Shader* shader, int i) const
 
 	// for spotlights
 	shader->setUniform("u_light_cone", cone_info[i]);
+
+	shader->setUniform("u_light_cast_shadows", cast_shadows[i]);
+	shader->setUniform("u_shadowmap_viewprojection", viewprojections[i]);
+	shader->setUniform("u_shadowmap_bias", entities[i]->shadow_bias);
+	shader->setUniform("u_shadow_atlas_row", i / GFX::SHADOW_ATLAS_COLS);
+	shader->setUniform("u_shadow_atlas_col", i % GFX::SHADOW_ATLAS_COLS);
 }
 
 void SCN::LightUniforms::add_light(LightEntity* light)
@@ -121,6 +132,8 @@ void SCN::LightUniforms::add_light(LightEntity* light)
 
 	// for shadowmap purposes
 	entities[count] = light;
+	cast_shadows[count] = static_cast<int>(light->cast_shadows);
+	shadow_biases[count] = light->shadow_bias;
 
 	count++;
 }

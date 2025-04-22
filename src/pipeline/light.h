@@ -52,6 +52,10 @@ namespace SCN {
 		vec3 directions[MAX_LIGHTS];
 		vec2 cone_info[MAX_LIGHTS];
 		LightEntity* entities[MAX_LIGHTS];
+		Matrix44 viewprojections[MAX_LIGHTS];
+		int cast_shadows[MAX_LIGHTS];
+		float shadow_biases[MAX_LIGHTS];
+
 
 		void bind(GFX::Shader* shader) const;
 		void bind_single(GFX::Shader* shader, int i) const;

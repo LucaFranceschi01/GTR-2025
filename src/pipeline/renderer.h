@@ -12,7 +12,8 @@ namespace GFX {
 	class Mesh;
 	class FBO;
 
-	constexpr int SHADOW_RES = 2048;
+	constexpr int SHADOW_RES = 1024;
+	constexpr int SHADOW_ATLAS_COLS = 3;
 }
 
 namespace SCN {
@@ -39,8 +40,7 @@ namespace SCN {
 
 		GFX::Texture* skybox_cubemap;
 
-		GFX::FBO* shadow_fbos[MAX_LIGHTS];
-		Matrix44 light_shadow_viewproj[MAX_LIGHTS];
+		GFX::FBO* shadow_atlas;
 
 		SCN::Scene* scene;
 

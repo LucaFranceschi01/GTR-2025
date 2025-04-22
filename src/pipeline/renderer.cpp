@@ -142,7 +142,7 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 void Renderer::generateShadowMaps()
 {
 	for (int i = 0; i < light_info.count; i++) {
-		shadow_fbos[i]->bind();
+		shadow_fbos[i]->bind();		//Starts painting on the texture
 		glEnable(GL_DEPTH_TEST);
 		glColorMask(false, false, false, false);
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -156,12 +156,13 @@ void Renderer::generateShadowMaps()
 
 		float half_size = light->area / 2.f;
 
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) {
+		if (light->light_type == SCN::eLightType::DIRECTIONAL) {	//We assume it only has directional ligths (for the moment) 
 			light_camera.setOrthographic(
 				-half_size, half_size,
 				-half_size, half_size,
 				light->near_distance, light->max_distance
 			);
+			light_shadow_viewproj[i] = light_camera.viewprojection_matrix;
 		}
 		else {
 			glDisable(GL_DEPTH_TEST);
@@ -178,12 +179,12 @@ void Renderer::generateShadowMaps()
 		}*/
 
 		for (s_DrawCommand command : draw_commands_opaque) {
-			renderPlain(&light_camera, command.model, command.mesh, command.material);
+			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
 		}
 
 		glDisable(GL_DEPTH_TEST);
 		glColorMask(true, true, true, true);
-		shadow_fbos[i]->unbind();
+		shadow_fbos[i]->unbind();	//Finishes painting on the texture
 	}
 }
 
@@ -311,14 +312,28 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	}
 	else {
 		for (int i = 0; i < light_info.count; i++) {
+
 			if (i == 0) {
 				glDisable(GL_BLEND);
 			}
 			else {
 				glEnable(GL_BLEND);
 			}
-
+			
 			light_info.bind_single(shader, i);
+
+			LightEntity* light = light_info.entities[i];
+
+			//IMPLEMENTACION DEL SHADOW MAP//
+			if (light->cast_shadows && shadow_fbos[i]) {
+				shader->setUniform("u_light_cast_shadows", 1);
+				shader->setUniform("u_shadowmap", shadow_fbos[i]->depth_texture, 8);
+				shader->setUniform("u_shadowmap_viewprojection", light_shadow_viewproj[i]);
+				shader->setUniform("u_shadowmap_bias", light->shadow_bias);
+			}
+			else {
+				shader->setUniform("u_light_cast_shadows", 0);
+			}
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -337,7 +352,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glDepthFunc(GL_LESS);
 }
 
-void Renderer::renderPlain(Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
+void Renderer::renderPlain(int i, Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -364,7 +379,8 @@ void Renderer::renderPlain(Camera* light_camera, const Matrix44 model, GFX::Mesh
 	shader->setUniform("u_viewprojection", light_camera->viewprojection_matrix);
 	shader->setUniform("u_camera_position", light_camera->eye);
 
-	light_info.bind_single(shader, 0);
+	light_info.bind_single(shader, i);
+
 	mesh->render(GL_TRIANGLES);
 
 	//disable shader

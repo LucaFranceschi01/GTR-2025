@@ -39,6 +39,7 @@ namespace SCN {
 		GFX::Texture* skybox_cubemap;
 
 		GFX::FBO* shadow_fbos[MAX_LIGHTS];
+		Matrix44 light_shadow_viewproj[MAX_LIGHTS];
 
 		SCN::Scene* scene;
 
@@ -67,7 +68,7 @@ namespace SCN {
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
-		void renderPlain(Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+		void renderPlain(int i, Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
 		void showUI();
 		

@@ -328,12 +328,12 @@ void main()
 	vec2 uv = v_uv;
 	vec4 color = u_color; // should always be 1 if not changed somehow
 
-	if (u_maps[ALBEDO]) {
+	if (u_maps[ALBEDO] != 0) {
 		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
 	}
 	
 	vec4 metallic_roughness = vec4(0.0);
-	if (u_maps[METALLIC_ROUGHNESS]) {
+	if (u_maps[METALLIC_ROUGHNESS] != 0) {
 		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
 	}
 	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
@@ -353,7 +353,7 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	if (u_maps[NORMALMAP]) {
+	if (u_maps[NORMALMAP] != 0) {
 		vec3 texture_normal = texture(u_normal_map, uv).xyz;
 		texture_normal = (texture_normal * 2.0) - 1.0;
 		texture_normal = normalize(texture_normal);
@@ -460,19 +460,51 @@ uniform sampler2D u_normal_map;
 uniform sampler2D u_texture_metallic_roughness;
 // end maps ===================================================================
 
+
+// start shadowmaps inputs ====================================================
+uniform int u_light_cast_shadows;
+uniform sampler2D u_shadowmap;
+uniform mat4 u_shadowmap_viewprojection;
+uniform float u_shadowmap_bias;
+// end shadowmaps inputs ======================================================
+
+
 out vec4 FragColor;
+
+
+float computeShadow (vec3 world_poosition)
+{
+	//project to light homogeneous space
+	vec4 proj_pos = u_shadowmap_viewprojection * vec4(world_poosition,1.0);
+	proj_pos.z -= u_shadowmap_bias;
+
+	//from homogeneus space to clip space
+	vec4 proj_pos_clip = proj_pos / proj_pos.w;
+
+	//from clip space to uv space
+	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
+
+	//get point depth in uv space
+	float real_depth = proj_pos_uv.z;
+
+	//read depth from depth buffer in uv space
+	float shadow_depth = texture( u_shadowmap, proj_pos_uv.xy).x;
+	if( shadow_depth < real_depth )
+		return 0.0;
+	return 1.0;
+	}
 
 void main()
 {
 	vec2 uv = v_uv;
 	vec4 color = u_color; // should always be 1 if not changed somehow
 
-	if (u_maps[ALBEDO]) {
+	if (u_maps[ALBEDO] != 0){
 		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
 	}
 	
 	vec4 metallic_roughness = vec4(0.0);
-	if (u_maps[METALLIC_ROUGHNESS]) {
+	if (u_maps[METALLIC_ROUGHNESS] != 0) {
 		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
 	}
 	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
@@ -492,7 +524,7 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	if (u_maps[NORMALMAP]) {
+	if (u_maps[NORMALMAP] != 0) {
 		vec3 texture_normal = texture(u_normal_map, uv).xyz;
 		texture_normal = (texture_normal * 2.0) - 1.0;
 		texture_normal = normalize(texture_normal);
@@ -502,8 +534,11 @@ void main()
 	// diffuse
 	if (u_light_type == LT_DIRECTIONAL) {
 		L = u_light_direction;
+		float shadow_factor = 1.0;
+		if (u_light_cast_shadows == 1) // La luz tiene una sombra
+			shadow_factor = computeShadow(v_world_position);
 		L = normalize(L);
-		light_intensity = u_light_color * u_light_intensity; // No attenuation for directional light
+		light_intensity = u_light_color * u_light_intensity * shadow_factor; // No attenuation for directional light
 	} else if (u_light_type == LT_POINT) {
 		L = u_light_position - v_world_position;
 		dist = length(L); // used in light intensity

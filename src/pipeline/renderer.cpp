@@ -37,11 +37,6 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
 
-	/*for (int i = 0; i < MAX_LIGHTS; i++) {
-		shadow_fbos[i] = new GFX::FBO();
-		shadow_fbos[i]->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
-	}*/
-
 	shadow_atlas = new GFX::FBO();
 	int nrows = MAX_LIGHTS / GFX::SHADOW_ATLAS_COLS + 1;
 	shadow_atlas->setDepthOnly(GFX::SHADOW_RES * GFX::SHADOW_ATLAS_COLS, GFX::SHADOW_RES * nrows);
@@ -66,11 +61,11 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 
 	if (!node->mesh) return;
 
-	// start rustum culling
+	// start frustum culling
 	bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
 
 	if (!in_frustum) return;
-	// end rustum culling
+	// end frustum culling
 
 	// since we will draw it for sure we create the renderable
 	s_DrawCommand draw_command{
@@ -146,25 +141,28 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 void Renderer::generateShadowMaps()
 {
 	shadow_atlas->bind();
+	
+	glEnable(GL_DEPTH_TEST);
+	glColorMask(false, false, false, false);
+
+	glClear(GL_DEPTH_BUFFER_BIT);
+	
+	if (front_face_culling == false) {
+		glDisable(GL_CULL_FACE);
+	}
+	else {
+		glEnable(GL_CULL_FACE);
+		//glFrontFace(GL_CW);
+	}
+
 	for (int i = 0; i < light_info.count; i++) {
 
 		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
 		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
 
 		glViewport(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
-		glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
-
-		glEnable(GL_DEPTH_TEST);
-		glColorMask(false, false, false, false);
-		glClear(GL_DEPTH_BUFFER_BIT);
-
-		if (front_face_culling == false) {
-			glDisable(GL_CULL_FACE);
-		}
-		else {
-			glEnable(GL_CULL_FACE);
-			//glFrontFace(GL_CW);
-		}
+		/*glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+		glEnable(GL_SCISSOR_TEST);*/
 
 		LightEntity* light = light_info.entities[i];
 		Camera light_camera;
@@ -175,7 +173,7 @@ void Renderer::generateShadowMaps()
 
 		float half_size = light->area / 2.f;
 
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) { // We assume it only has directional ligths (for the moment)
+		if (light->light_type == SCN::eLightType::DIRECTIONAL) {
 			light_camera.setOrthographic(
 				-half_size, half_size,
 				-half_size, half_size,
@@ -188,8 +186,6 @@ void Renderer::generateShadowMaps()
 			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
 		else {
-			glDisable(GL_DEPTH_TEST);
-			glColorMask(true, true, true, true);
 			continue;
 		}
 
@@ -201,13 +197,14 @@ void Renderer::generateShadowMaps()
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
 		}
 
-		// Disable the default front face culling
-		glDisable(GL_CULL_FACE);
-
-
-		glDisable(GL_DEPTH_TEST);
-		glColorMask(true, true, true, true);
+		//glDisable(GL_SCISSOR_TEST);
 	}
+	// Disable the default front face culling
+	glDisable(GL_CULL_FACE);
+
+	glDisable(GL_DEPTH_TEST);
+	glColorMask(true, true, true, true);
+
 	shadow_atlas->unbind();
 }
 
@@ -382,7 +379,23 @@ void Renderer::renderPlain(int i, Camera* light_camera, const Matrix44 model, GF
 		return;
 	shader->enable();
 
-	material->bind(shader);
+	//material->bind(shader);
+	int flags[SCN::eTextureChannel::ALL] = { 0 };
+	GFX::Texture* texture = material->textures[SCN::eTextureChannel::ALBEDO].texture;
+
+	shader->setUniform("u_color", material->color);
+
+	if (texture) {
+		shader->setUniform("u_texture", texture, 0);
+		flags[SCN::eTextureChannel::ALBEDO] = 1;
+	}
+	else {
+		texture = GFX::Texture::getWhiteTexture(); //a 1x1 white texture
+	}
+
+	shader->setUniform("u_alpha_cutoff", material->alpha_mode == SCN::eAlphaMode::MASK ? material->alpha_cutoff : 0.001f);
+
+	shader->setUniform1Array("u_maps", (int*)flags, SCN::eTextureChannel::ALL);
 
 	//upload uniforms
 	shader->setUniform("u_model", model);

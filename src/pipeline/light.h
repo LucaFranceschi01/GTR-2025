@@ -39,26 +39,33 @@ namespace SCN {
 		void serialize(cJSON* json);
 	};
 
-	class LightUniforms
+	class LightUniforms // Maybe not the best name for this class
 	{
 	public:
 		Vector3f ambient_light = { 0.2f };
 
-		uint8_t count = 0;
+		// Amount of visible lights
+		uint8_t l_count = 0;
+
+		// Typical light uniforms
 		float intensities[MAX_LIGHTS];
 		float types[MAX_LIGHTS];
 		vec3 colors[MAX_LIGHTS];
 		vec3 positions[MAX_LIGHTS];
 		vec3 directions[MAX_LIGHTS];
 		vec2 cone_info[MAX_LIGHTS];
+		
+		// Used for shadows
 		LightEntity* entities[MAX_LIGHTS];
 		Matrix44 viewprojections[MAX_LIGHTS];
 		int cast_shadows[MAX_LIGHTS];
 		float shadow_biases[MAX_LIGHTS];
-
+		std::vector<int> shadow_lights_idxs;
 
 		void bind(GFX::Shader* shader) const;
 		void bind_single(GFX::Shader* shader, int i) const;
 		void add_light(LightEntity* light);
+
+		void clear();
 	};
 };

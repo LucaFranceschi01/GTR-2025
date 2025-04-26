@@ -36,14 +36,6 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
-
-	shadow_atlas = new GFX::FBO();
-
-	// initial values, will vary depending on the lights
-	shadow_atlas_dims.x = 3;
-	shadow_atlas_dims.y = shadow_map_count / shadow_atlas_dims.x + 1;
-
-	shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
 }
 
 void Renderer::setupScene()
@@ -94,7 +86,7 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 	draw_commands_opaque.clear();
 	draw_commands_transp.clear();
 	
-	light_info.count = 0;
+	light_info.clear();
 
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* entity = scene->entities[i];
@@ -142,101 +134,14 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 		});
 }
 
-void SCN::Renderer::updateShadowAtlasSize()
-{
-	delete shadow_atlas;
-
-	shadow_atlas_dims.y = shadow_map_count / shadow_atlas_dims.x + 1;
-
-	shadow_atlas = new GFX::FBO();
-	shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
-}
-
-void Renderer::generateShadowMaps()
-{
-	if (shadow_atlas->depth_texture->width != shadow_atlas_dims.x * shadow_map_res ||
-			shadow_atlas->depth_texture->height != shadow_atlas_dims.y * shadow_map_res) {
-		updateShadowAtlasSize();
-	}
-
-	shadow_atlas->bind();
-	
-	glEnable(GL_DEPTH_TEST);
-	glColorMask(false, false, false, false);
-
-	glClear(GL_DEPTH_BUFFER_BIT);
-	
-	if (front_face_culling == false) {
-		glDisable(GL_CULL_FACE);
-	}
-	else {
-		glEnable(GL_CULL_FACE);
-		//glFrontFace(GL_CW);
-	}
-
-	for (int i = 0; i < light_info.count; i++) {
-
-		if (!light_info.cast_shadows[i])
-			continue;
-
-		int row = i / shadow_atlas_dims.x; // Integer division
-		int col = i % shadow_atlas_dims.x; // Modulo
-
-		glViewport(col * shadow_map_res, row * shadow_map_res, shadow_map_res, shadow_map_res);
-		/*glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
-		glEnable(GL_SCISSOR_TEST);*/
-
-		LightEntity* light = light_info.entities[i];
-		Camera light_camera;
-
-		mat4 light_model = light->root.getGlobalMatrix();
-
-		light_camera.lookAt(light_model.getTranslation(), light_model * vec3(0.f, 0.f, -1.f), vec3(0.f, 1.f, 0.f));
-
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) {
-			float half_size = light->area / 2.f;
-			
-			light_camera.setOrthographic(
-				-half_size, half_size,
-				-half_size, half_size,
-				light->near_distance, light->max_distance
-			);
-		}
-		else if (light->light_type == SCN::eLightType::SPOT) {
-			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
-		}
-		else {
-			continue;
-		}
-
-		light_info.viewprojections[i] = light_camera.viewprojection_matrix;
-
-		for (s_DrawCommand command : draw_commands_opaque) {
-			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
-		}
-
-		for (s_DrawCommand command : draw_commands_transp) {
-			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
-		}
-
-		//glDisable(GL_SCISSOR_TEST);
-	}
-	// Disable the default front face culling
-	glDisable(GL_CULL_FACE);
-
-	glDisable(GL_DEPTH_TEST);
-	glColorMask(true, true, true, true);
-
-	shadow_atlas->unbind();
-}
-
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 {
 	this->scene = scene;
 	setupScene();
 
 	parseSceneEntities(scene, camera);
-	generateShadowMaps();
+	
+	shadow_info.generateShadowMaps(draw_commands_opaque, draw_commands_transp, light_info, front_face_culling_on);
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
@@ -345,18 +250,20 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
-	shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
-	shader->setUniform("u_shadow_atlas_dims", shadow_atlas_dims);
+	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
 
+		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
 	}
 	else {
-		for (int i = 0; i < light_info.count; i++) {
+		for (int i = 0; i < light_info.l_count; i++) {
 
 			if (i == 0) {
 				glDisable(GL_BLEND);
@@ -367,8 +274,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 			
 			light_info.bind_single(shader, i);
 
-			shader->setUniform("u_shadow_atlas_row", i / shadow_atlas_dims.x);
-			shader->setUniform("u_shadow_atlas_col", i % shadow_atlas_dims.x);
+			shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -387,57 +293,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glDepthFunc(GL_LESS);
 }
 
-void Renderer::renderPlain(int i, Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
-{
-	//in case there is nothing to do
-	if (!mesh || !mesh->getNumVertices() || !material)
-		return;
-	assert(glGetError() == GL_NO_ERROR);
-
-	//define locals to simplify coding
-	GFX::Shader* shader = GFX::Shader::Get("plain");
-
-	//glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
-
-	//no shader? then nothing to render
-	if (!shader)
-		return;
-	shader->enable();
-
-	//material->bind(shader);
-	int flags[SCN::eTextureChannel::ALL] = { 0 };
-	GFX::Texture* texture = material->textures[SCN::eTextureChannel::ALBEDO].texture;
-
-	shader->setUniform("u_color", material->color);
-
-	if (texture) {
-		shader->setUniform("u_texture", texture, 0);
-		flags[SCN::eTextureChannel::ALBEDO] = 1;
-	}
-	else {
-		texture = GFX::Texture::getWhiteTexture(); //a 1x1 white texture
-	}
-
-	shader->setUniform("u_alpha_cutoff", material->alpha_mode == SCN::eAlphaMode::MASK ? material->alpha_cutoff : 0.001f);
-
-	shader->setUniform1Array("u_maps", (int*)flags, SCN::eTextureChannel::ALL);
-
-	//upload uniforms
-	shader->setUniform("u_model", model);
-
-	// Upload camera uniforms
-	shader->setUniform("u_viewprojection", light_camera->viewprojection_matrix);
-	shader->setUniform("u_camera_position", light_camera->eye);
-
-	light_info.bind_single(shader, i);
-
-	mesh->render(GL_TRIANGLES);
-
-	//disable shader
-	shader->disable();
-}
-
 #ifndef SKIP_IMGUI
 
 void Renderer::showUI()
@@ -449,21 +304,10 @@ void Renderer::showUI()
 	//add here your stuff
 	//...
 	ImGui::Checkbox("Singlepass ON", &singlepass_on);
-	ImGui::Checkbox("Front Face Culling ON", &front_face_culling);
+	ImGui::Checkbox("Front Face Culling ON", &front_face_culling_on);
 
 	// for shadow atlas
-	if (ImGui::TreeNode("Shadowmaps")) {
-		ImGui::Text("ShadowMap columns");
-		ImGui::SliderInt("##shadowmapcolumns", &shadow_atlas_dims.x, 1, 5);
-		int exponent = static_cast<int>(std::log2(shadow_map_res));
-		ImGui::Text("ShadowMap resolution exponent");
-		if (ImGui::SliderInt("##shadowmapresolutionexponent", &exponent, 7, 12)) { // 
-			shadow_map_res = 1 << exponent; // expression extracted from ChatGPT
-		}
-		ImGui::Text("ShadowMap Resolution: %dx%d", shadow_map_res, shadow_map_res);
-
-		ImGui::TreePop();
-	}
+	Shadows::showUI(shadow_info);
 }
 
 #else

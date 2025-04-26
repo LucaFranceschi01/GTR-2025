@@ -274,9 +274,9 @@ uniform int u_shadow_atlas_col;
 uniform int u_light_cast_shadowss[MAX_LIGHTS];
 uniform mat4 u_shadowmap_viewprojections[MAX_LIGHTS];
 uniform float u_shadowmap_biases[MAX_LIGHTS];
-// end shadowmaps inputs ======================================================
 
-const vec2 shadow_atlas_size = vec2(SHADOW_ATLAS_COLS, MAX_LIGHTS / SHADOW_ATLAS_COLS + 1);
+uniform ivec2 u_shadow_atlas_dims; // (cols, rows) of shadow atlas
+// end shadowmaps inputs ======================================================
 
 float compute_shadow_factor(vec3 world_position)
 {
@@ -295,7 +295,7 @@ float compute_shadow_factor(vec3 world_position)
 
 	// take into account the atlas offset
 	vec2 shadow_atlas_offset = vec2(u_shadow_atlas_col, u_shadow_atlas_row);
-	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / vec2(u_shadow_atlas_dims);
 
 	// read depth from depth buffer in uv space
 	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
@@ -321,8 +321,8 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 	float real_depth = proj_pos_uv.z;
 
 	// take into account the atlas offset
-	vec2 shadow_atlas_offset = vec2(mod(i, SHADOW_ATLAS_COLS), floor(i / SHADOW_ATLAS_COLS));
-	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+	vec2 shadow_atlas_offset = vec2(mod(i, u_shadow_atlas_dims.x), floor(i / u_shadow_atlas_dims.x));
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / vec2(u_shadow_atlas_dims);
 
 	// read depth from depth buffer in uv space
 	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
@@ -349,8 +349,6 @@ const int METALLIC_ROUGHNESS	= 3;
 const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
 const uint MAX_MAPS = 6;
-
-const int SHADOW_ATLAS_COLS = 3;
 
 \single_phong.fs
 
@@ -458,12 +456,18 @@ void main()
 			L = u_light_position[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+
 			numerator = clamp(dot(L, normalize(u_light_direction[i])), 0.0, 1.0) - cos(u_light_cone[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
 				light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cone[i].x) - cos(u_light_cone[i].y));
+				light_intensity *= shadow_factor;
 			}
 		}
 

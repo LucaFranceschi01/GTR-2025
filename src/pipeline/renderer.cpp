@@ -38,8 +38,12 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.uploadToVRAM();
 
 	shadow_atlas = new GFX::FBO();
-	int nrows = MAX_LIGHTS / GFX::SHADOW_ATLAS_COLS + 1;
-	shadow_atlas->setDepthOnly(GFX::SHADOW_RES * GFX::SHADOW_ATLAS_COLS, GFX::SHADOW_RES * nrows);
+
+	// initial values, will vary depending on the lights
+	shadow_atlas_dims.x = 3;
+	shadow_atlas_dims.y = shadow_map_count / shadow_atlas_dims.x + 1;
+
+	shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
 }
 
 void Renderer::setupScene()
@@ -138,8 +142,23 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 		});
 }
 
+void SCN::Renderer::updateShadowAtlasSize()
+{
+	delete shadow_atlas;
+
+	shadow_atlas_dims.y = shadow_map_count / shadow_atlas_dims.x + 1;
+
+	shadow_atlas = new GFX::FBO();
+	shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
+}
+
 void Renderer::generateShadowMaps()
 {
+	if (shadow_atlas->depth_texture->width != shadow_atlas_dims.x * shadow_map_res ||
+			shadow_atlas->depth_texture->height != shadow_atlas_dims.y * shadow_map_res) {
+		updateShadowAtlasSize();
+	}
+
 	shadow_atlas->bind();
 	
 	glEnable(GL_DEPTH_TEST);
@@ -157,10 +176,13 @@ void Renderer::generateShadowMaps()
 
 	for (int i = 0; i < light_info.count; i++) {
 
-		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
-		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
+		if (!light_info.cast_shadows[i])
+			continue;
 
-		glViewport(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
+		int row = i / shadow_atlas_dims.x; // Integer division
+		int col = i % shadow_atlas_dims.x; // Modulo
+
+		glViewport(col * shadow_map_res, row * shadow_map_res, shadow_map_res, shadow_map_res);
 		/*glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
 		glEnable(GL_SCISSOR_TEST);*/
 
@@ -171,23 +193,23 @@ void Renderer::generateShadowMaps()
 
 		light_camera.lookAt(light_model.getTranslation(), light_model * vec3(0.f, 0.f, -1.f), vec3(0.f, 1.f, 0.f));
 
-		float half_size = light->area / 2.f;
-
 		if (light->light_type == SCN::eLightType::DIRECTIONAL) {
+			float half_size = light->area / 2.f;
+			
 			light_camera.setOrthographic(
 				-half_size, half_size,
 				-half_size, half_size,
 				light->near_distance, light->max_distance
 			);
-			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
 		else if (light->light_type == SCN::eLightType::SPOT) {
 			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
-			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 		}
 		else {
 			continue;
 		}
+
+		light_info.viewprojections[i] = light_camera.viewprojection_matrix;
 
 		for (s_DrawCommand command : draw_commands_opaque) {
 			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
@@ -324,6 +346,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	shader->setUniform("u_time", t );
 
 	shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
+	shader->setUniform("u_shadow_atlas_dims", shadow_atlas_dims);
 
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
@@ -343,6 +366,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 			}
 			
 			light_info.bind_single(shader, i);
+
+			shader->setUniform("u_shadow_atlas_row", i / shadow_atlas_dims.x);
+			shader->setUniform("u_shadow_atlas_col", i % shadow_atlas_dims.x);
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -424,6 +450,20 @@ void Renderer::showUI()
 	//...
 	ImGui::Checkbox("Singlepass ON", &singlepass_on);
 	ImGui::Checkbox("Front Face Culling ON", &front_face_culling);
+
+	// for shadow atlas
+	if (ImGui::TreeNode("Shadowmaps")) {
+		ImGui::Text("ShadowMap columns");
+		ImGui::SliderInt("##shadowmapcolumns", &shadow_atlas_dims.x, 1, 5);
+		int exponent = static_cast<int>(std::log2(shadow_map_res));
+		ImGui::Text("ShadowMap resolution exponent");
+		if (ImGui::SliderInt("##shadowmapresolutionexponent", &exponent, 7, 12)) { // 
+			shadow_map_res = 1 << exponent; // expression extracted from ChatGPT
+		}
+		ImGui::Text("ShadowMap Resolution: %dx%d", shadow_map_res, shadow_map_res);
+
+		ImGui::TreePop();
+	}
 }
 
 #else

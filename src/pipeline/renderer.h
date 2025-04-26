@@ -11,9 +11,6 @@ namespace GFX {
 	class Shader;
 	class Mesh;
 	class FBO;
-
-	constexpr int SHADOW_RES = 1024;
-	constexpr int SHADOW_ATLAS_COLS = 3;
 }
 
 namespace SCN {
@@ -41,6 +38,11 @@ namespace SCN {
 		GFX::Texture* skybox_cubemap;
 
 		GFX::FBO* shadow_atlas;
+		int shadow_map_res = 1024;
+		Vector2<int> shadow_atlas_dims; // (cols, rows)
+		int shadow_map_count = MAX_LIGHTS;
+
+
 
 		SCN::Scene* scene;
 
@@ -58,6 +60,7 @@ namespace SCN {
 
 		void parseSceneEntities(SCN::Scene* scene, Camera* camera);
 
+		void updateShadowAtlasSize();
 		void generateShadowMaps();
 
 		//renders several elements of the scene

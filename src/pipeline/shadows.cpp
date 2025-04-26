@@ -31,7 +31,7 @@ void SCN::Shadows::updateShadowAtlasSize(int shadows_count)
 
 		shadow_map_count = shadows_count;
 
-		shadow_atlas_dims.y = max(shadow_map_count / shadow_atlas_dims.x, 1); // edge case shadow_map_count < shadow_atlas_dims
+		shadow_atlas_dims.y = ceil(float(shadow_map_count) / float(shadow_atlas_dims.x));
 
 		shadow_atlas = new GFX::FBO();
 		shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
@@ -195,7 +195,7 @@ void SCN::Shadows::showUI(Shadows& shadow_info)
 
 		int exponent = static_cast<int>(std::log2(shadow_info.shadow_map_res));
 		ImGui::Text("ShadowMap resolution exponent");
-		if (ImGui::SliderInt("##shadowmapresolutionexponent", &exponent, 7, 12)) {
+		if (ImGui::SliderInt("##shadowmapresolutionexponent", &exponent, 7, 11)) {
 			shadow_info.shadow_map_res = 1 << exponent; // expression extracted from ChatGPT
 		}
 		ImGui::Text("ShadowMap Resolution: %dx%d", shadow_info.shadow_map_res, shadow_info.shadow_map_res);

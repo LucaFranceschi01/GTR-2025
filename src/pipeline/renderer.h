@@ -1,8 +1,8 @@
 #pragma once
 #include "scene.h"
 #include "prefab.h"
-
 #include "light.h"
+#include "shadows.h"
 
 //forward declarations
 class Camera;
@@ -11,9 +11,6 @@ namespace GFX {
 	class Shader;
 	class Mesh;
 	class FBO;
-
-	constexpr int SHADOW_RES = 1024;
-	constexpr int SHADOW_ATLAS_COLS = 3;
 }
 
 namespace SCN {
@@ -36,11 +33,11 @@ namespace SCN {
 		bool render_wireframe;
 		bool render_boundaries;
 		bool singlepass_on = false;
-		bool front_face_culling = false;
+		bool front_face_culling_on = false;
 
 		GFX::Texture* skybox_cubemap;
 
-		GFX::FBO* shadow_atlas;
+		Shadows shadow_info;
 
 		SCN::Scene* scene;
 
@@ -58,8 +55,6 @@ namespace SCN {
 
 		void parseSceneEntities(SCN::Scene* scene, Camera* camera);
 
-		void generateShadowMaps();
-
 		//renders several elements of the scene
 		void renderScene(SCN::Scene* scene, Camera* camera);
 
@@ -68,8 +63,6 @@ namespace SCN {
 
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
-
-		void renderPlain(int i, Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
 		void showUI();
 		

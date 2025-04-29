@@ -68,7 +68,7 @@ void SCN::LightUniforms::bind(GFX::Shader* shader) const
 {
 	// upload light-related uniforms
 	shader->setUniform("u_ambient_light", ambient_light);
-	shader->setUniform("u_light_count", count);
+	shader->setUniform("u_light_count", l_count);
 
 	shader->setUniform1Array("u_light_intensity", intensities, MAX_LIGHTS);
 	shader->setUniform1Array("u_light_type", types, MAX_LIGHTS);
@@ -110,30 +110,42 @@ void SCN::LightUniforms::bind_single(GFX::Shader* shader, int i) const
 	shader->setUniform("u_light_cast_shadows", cast_shadows[i]);
 	shader->setUniform("u_shadowmap_viewprojection", viewprojections[i]);
 	shader->setUniform("u_shadowmap_bias", entities[i]->shadow_bias);
-	shader->setUniform("u_shadow_atlas_row", i / GFX::SHADOW_ATLAS_COLS);
-	shader->setUniform("u_shadow_atlas_col", i % GFX::SHADOW_ATLAS_COLS);
 }
 
 void SCN::LightUniforms::add_light(LightEntity* light)
 {
 	Matrix44 gm = light->root.getGlobalMatrix();
 
+	uint8_t& i = l_count;
+
 	// for all types of light
-	intensities[count] = light->intensity;
-	types[count] = light->light_type;
-	colors[count] = light->color;
-	positions[count] = gm.getTranslation();
+	intensities[i] = light->intensity;
+	types[i] = light->light_type;
+	colors[i] = light->color;
+	positions[i] = gm.getTranslation();
 
 	// for directional + spot lights
-	directions[count] = gm.frontVector();
+	directions[i] = gm.frontVector();
 
 	// for spotlights
-	cone_info[count] = light->cone_info * DEG2RAD;
+	cone_info[i] = light->cone_info * DEG2RAD;
 
 	// for shadowmap purposes
-	entities[count] = light;
-	cast_shadows[count] = static_cast<int>(light->cast_shadows);
-	shadow_biases[count] = light->shadow_bias;
+	entities[i] = light;
+	cast_shadows[i] = static_cast<int>(light->cast_shadows);
+	shadow_biases[i] = light->shadow_bias;
 
-	count++;
+	i++; // increase counter
+	
+	if (types[i-1] == eLightType::POINT || !cast_shadows[i-1])
+		return;
+
+	shadow_lights_idxs.push_back(i - 1);
+}
+
+void SCN::LightUniforms::clear()
+{
+	l_count = 0;
+
+	shadow_lights_idxs.clear();
 }

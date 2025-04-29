@@ -260,6 +260,24 @@ vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 	return normalize(TBN * normal_pixel);
 }
 
+\constants
+
+// light types
+const int NO_LIGHT = 		0;
+const int LT_POINT = 		1;
+const int LT_SPOT =			2;
+const int LT_DIRECTIONAL = 	3;
+const uint MAX_LIGHTS = 5;
+
+// texture types
+const int ALBEDO				= 0;
+const int EMISSIVE				= 1;
+const int OPACITY				= 2;
+const int METALLIC_ROUGHNESS	= 3;
+const int OCCLUSION				= 4;
+const int NORMALMAP				= 5;
+const uint MAX_MAPS = 6;
+
 \shadows
 
 // start shadowmaps inputs ====================================================
@@ -268,15 +286,15 @@ uniform sampler2D u_shadow_atlas;
 uniform int u_light_cast_shadows;
 uniform mat4 u_shadowmap_viewprojection;
 uniform float u_shadowmap_bias;
-uniform int u_shadow_atlas_row;
-uniform int u_shadow_atlas_col;
 
 uniform int u_light_cast_shadowss[MAX_LIGHTS];
 uniform mat4 u_shadowmap_viewprojections[MAX_LIGHTS];
 uniform float u_shadowmap_biases[MAX_LIGHTS];
-// end shadowmaps inputs ======================================================
 
-const vec2 shadow_atlas_size = vec2(SHADOW_ATLAS_COLS, MAX_LIGHTS / SHADOW_ATLAS_COLS + 1);
+uniform ivec2 u_shadow_atlas_dims; // (cols, rows) of shadow atlas
+uniform ivec2 u_shadow_atlas_offset; 
+uniform int u_atlas_indices[MAX_LIGHTS];
+// end shadowmaps inputs ======================================================
 
 float compute_shadow_factor(vec3 world_position)
 {
@@ -294,8 +312,7 @@ float compute_shadow_factor(vec3 world_position)
 	float real_depth = proj_pos_uv.z;
 
 	// take into account the atlas offset
-	vec2 shadow_atlas_offset = vec2(u_shadow_atlas_col, u_shadow_atlas_row);
-	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+	vec2 uv_in_atlas = (proj_pos_uv.xy + vec2(u_shadow_atlas_offset)) / vec2(u_shadow_atlas_dims);
 
 	// read depth from depth buffer in uv space
 	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
@@ -321,8 +338,8 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 	float real_depth = proj_pos_uv.z;
 
 	// take into account the atlas offset
-	vec2 shadow_atlas_offset = vec2(mod(i, SHADOW_ATLAS_COLS), floor(i / SHADOW_ATLAS_COLS));
-	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / shadow_atlas_size;
+	vec2 shadow_atlas_offset = vec2(mod(u_atlas_indices[i], u_shadow_atlas_dims.x), floor(u_atlas_indices[i] / u_shadow_atlas_dims.x));
+	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / vec2(u_shadow_atlas_dims);
 
 	// read depth from depth buffer in uv space
 	float shadow_depth = texture(u_shadow_atlas, uv_in_atlas).x;
@@ -331,26 +348,6 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 		return 0.0;
 	return 1.0;
 }
-
-\constants
-
-// light types
-const int NO_LIGHT = 		0;
-const int LT_POINT = 		1;
-const int LT_SPOT =			2;
-const int LT_DIRECTIONAL = 	3;
-const uint MAX_LIGHTS = 5;
-
-// texture types
-const int ALBEDO				= 0;
-const int EMISSIVE				= 1;
-const int OPACITY				= 2;
-const int METALLIC_ROUGHNESS	= 3;
-const int OCCLUSION				= 4;
-const int NORMALMAP				= 5;
-const uint MAX_MAPS = 6;
-
-const int SHADOW_ATLAS_COLS = 3;
 
 \single_phong.fs
 
@@ -458,12 +455,18 @@ void main()
 			L = u_light_position[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+
 			numerator = clamp(dot(L, normalize(u_light_direction[i])), 0.0, 1.0) - cos(u_light_cone[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
 				light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cone[i].x) - cos(u_light_cone[i].y));
+				light_intensity *= shadow_factor;
 			}
 		}
 

@@ -71,6 +71,7 @@ namespace GFX {
 		void setUniform(const char* varname, int input) { assert(current == this); setUniform1(varname, input); }
 		void setUniform(const char* varname, float input) { assert(current == this); setUniform1(varname, input); }
 		void setUniform(const char* varname, const Vector2f& input) { assert(current == this); setUniform2(varname, input.x, input.y); }
+		void setUniform(const char* varname, const Vector2<int>& input) { assert(current == this); setUniform2(varname, input.x, input.y); }
 		void setUniform(const char* varname, const Vector3f& input) { assert(current == this); setUniform3(varname, input.x, input.y, input.z); }
 		void setUniform(const char* varname, const Vector4f& input) { assert(current == this); setUniform4(varname, input.x, input.y, input.z, input.w); }
 		void setUniform(const char* varname, const Matrix44& input) { assert(current == this); setMatrix44(varname, input); }

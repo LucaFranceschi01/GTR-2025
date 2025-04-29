@@ -36,15 +36,6 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
-
-	/*for (int i = 0; i < MAX_LIGHTS; i++) {
-		shadow_fbos[i] = new GFX::FBO();
-		shadow_fbos[i]->setDepthOnly(GFX::SHADOW_RES, GFX::SHADOW_RES);
-	}*/
-
-	shadow_atlas = new GFX::FBO();
-	int nrows = MAX_LIGHTS / GFX::SHADOW_ATLAS_COLS + 1;
-	shadow_atlas->setDepthOnly(GFX::SHADOW_RES * GFX::SHADOW_ATLAS_COLS, GFX::SHADOW_RES * nrows);
 }
 
 void Renderer::setupScene()
@@ -66,11 +57,11 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 
 	if (!node->mesh) return;
 
-	// start rustum culling
+	// start frustum culling
 	bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
 
 	if (!in_frustum) return;
-	// end rustum culling
+	// end frustum culling
 
 	// since we will draw it for sure we create the renderable
 	s_DrawCommand draw_command{
@@ -95,7 +86,7 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 	draw_commands_opaque.clear();
 	draw_commands_transp.clear();
 	
-	light_info.count = 0;
+	light_info.clear();
 
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* entity = scene->entities[i];
@@ -143,81 +134,14 @@ void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
 		});
 }
 
-void Renderer::generateShadowMaps()
-{
-	shadow_atlas->bind();
-	for (int i = 0; i < light_info.count; i++) {
-
-		int row = i / GFX::SHADOW_ATLAS_COLS; // Integer division
-		int col = i % GFX::SHADOW_ATLAS_COLS; // Modulo
-
-		glViewport(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
-		glScissor(col * GFX::SHADOW_RES, row * GFX::SHADOW_RES, GFX::SHADOW_RES, GFX::SHADOW_RES);
-
-		glEnable(GL_DEPTH_TEST);
-		glColorMask(false, false, false, false);
-		glClear(GL_DEPTH_BUFFER_BIT);
-
-		if (front_face_culling == false) {
-			glDisable(GL_CULL_FACE);
-		}
-		else {
-			glEnable(GL_CULL_FACE);
-			//glFrontFace(GL_CW);
-		}
-
-		LightEntity* light = light_info.entities[i];
-		Camera light_camera;
-
-		mat4 light_model = light->root.getGlobalMatrix();
-
-		light_camera.lookAt(light_model.getTranslation(), light_model * vec3(0.f, 0.f, -1.f), vec3(0.f, 1.f, 0.f));
-
-		float half_size = light->area / 2.f;
-
-		if (light->light_type == SCN::eLightType::DIRECTIONAL) { // We assume it only has directional ligths (for the moment)
-			light_camera.setOrthographic(
-				-half_size, half_size,
-				-half_size, half_size,
-				light->near_distance, light->max_distance
-			);
-			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
-		}
-		else if (light->light_type == SCN::eLightType::SPOT) {
-			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
-			light_info.viewprojections[i] = light_camera.viewprojection_matrix;
-		}
-		else {
-			glDisable(GL_DEPTH_TEST);
-			glColorMask(true, true, true, true);
-			continue;
-		}
-
-		for (s_DrawCommand command : draw_commands_opaque) {
-			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
-		}
-
-		for (s_DrawCommand command : draw_commands_transp) {
-			renderPlain(i, &light_camera, command.model, command.mesh, command.material);
-		}
-
-		// Disable the default front face culling
-		glDisable(GL_CULL_FACE);
-
-
-		glDisable(GL_DEPTH_TEST);
-		glColorMask(true, true, true, true);
-	}
-	shadow_atlas->unbind();
-}
-
 void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 {
 	this->scene = scene;
 	setupScene();
 
 	parseSceneEntities(scene, camera);
-	generateShadowMaps();
+	
+	shadow_info.generateShadowMaps(draw_commands_opaque, draw_commands_transp, light_info, front_face_culling_on);
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
@@ -326,17 +250,20 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	float t = getTime();
 	shader->setUniform("u_time", t );
 
-	shader->setUniform("u_shadow_atlas", shadow_atlas->depth_texture, 8);
+	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
 
+		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
 	}
 	else {
-		for (int i = 0; i < light_info.count; i++) {
+		for (int i = 0; i < light_info.l_count; i++) {
 
 			if (i == 0) {
 				glDisable(GL_BLEND);
@@ -346,6 +273,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 			}
 			
 			light_info.bind_single(shader, i);
+
+			shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -364,41 +293,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glDepthFunc(GL_LESS);
 }
 
-void Renderer::renderPlain(int i, Camera* light_camera, const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
-{
-	//in case there is nothing to do
-	if (!mesh || !mesh->getNumVertices() || !material)
-		return;
-	assert(glGetError() == GL_NO_ERROR);
-
-	//define locals to simplify coding
-	GFX::Shader* shader = GFX::Shader::Get("plain");
-
-	//glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
-
-	//no shader? then nothing to render
-	if (!shader)
-		return;
-	shader->enable();
-
-	material->bind(shader);
-
-	//upload uniforms
-	shader->setUniform("u_model", model);
-
-	// Upload camera uniforms
-	shader->setUniform("u_viewprojection", light_camera->viewprojection_matrix);
-	shader->setUniform("u_camera_position", light_camera->eye);
-
-	light_info.bind_single(shader, i);
-
-	mesh->render(GL_TRIANGLES);
-
-	//disable shader
-	shader->disable();
-}
-
 #ifndef SKIP_IMGUI
 
 void Renderer::showUI()
@@ -410,7 +304,10 @@ void Renderer::showUI()
 	//add here your stuff
 	//...
 	ImGui::Checkbox("Singlepass ON", &singlepass_on);
-	ImGui::Checkbox("Front Face Culling ON", &front_face_culling);
+	ImGui::Checkbox("Front Face Culling ON", &front_face_culling_on);
+
+	// for shadow atlas
+	Shadows::showUI(shadow_info);
 }
 
 #else

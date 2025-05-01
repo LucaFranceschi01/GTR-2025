@@ -395,8 +395,7 @@ uniform vec3 u_camera_position;
 uniform vec4 u_color;
 uniform float u_alpha_cutoff;
 
-uniform float u_roughness;
-// uniform float u_metallic;
+uniform float u_shininess;
 // end material-related inputs ================================================
 
 
@@ -417,15 +416,6 @@ void main()
 	if (u_maps[ALBEDO] != 0) {
 		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
 	}
-	
-	vec4 metallic_roughness = vec4(0.0);
-	if (u_maps[METALLIC_ROUGHNESS] != 0) {
-		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
-	}
-	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
-	float roughness = u_roughness * metallic_roughness.y; // green is roughness
-
-	float shininess = 255.0 - roughness;
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -439,12 +429,12 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	if (u_maps[NORMALMAP] != 0) {
-		vec3 texture_normal = texture(u_normal_map, uv).xyz;
-		texture_normal = (texture_normal * 2.0) - 1.0;
-		texture_normal = normalize(texture_normal);
-		N = perturbNormal(N, -V, uv, texture_normal);
-	}
+	//if (u_maps[NORMALMAP] != 0) {
+	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
+	//	texture_normal = (texture_normal * 2.0) - 1.0;
+	//	texture_normal = normalize(texture_normal);
+	//	N = perturbNormal(N, -V, uv, texture_normal);
+	//}
 
 	for (int i=0; i<u_light_count; i++)
 	{
@@ -489,7 +479,7 @@ void main()
 		R = reflect(-L, N); // minus because of reflect function first argument is incident
 		R_dot_V = clamp(dot(R, V), 0.0, 1.0);
 
-		specular_term = pow(R_dot_V, shininess) * light_intensity;
+		specular_term = pow(R_dot_V, u_shininess) * light_intensity;
 
 		// add diffuse and specular terms
 		final_light += diffuse_term;
@@ -521,8 +511,7 @@ uniform vec3 u_camera_position;
 uniform vec4 u_color;
 uniform float u_alpha_cutoff;
 
-uniform float u_roughness;
-// uniform float u_metallic;
+uniform float u_shininess;
 // end material-related inputs ================================================
 
 
@@ -543,15 +532,6 @@ void main()
 	if (u_maps[ALBEDO] != 0){
 		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
 	}
-	
-	vec4 metallic_roughness = vec4(0.0);
-	if (u_maps[METALLIC_ROUGHNESS] != 0) {
-		metallic_roughness = texture( u_texture_metallic_roughness, v_uv ) * 255.0;
-	}
-	// float metallic = u_metallic * metallic_roughness.x; // red is metallic
-	float roughness = u_roughness * metallic_roughness.y; // green is roughness
-
-	float shininess = 255.0 - roughness;
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -565,12 +545,12 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	if (u_maps[NORMALMAP] != 0) {
-		vec3 texture_normal = texture(u_normal_map, uv).xyz;
-		texture_normal = (texture_normal * 2.0) - 1.0;
-		texture_normal = normalize(texture_normal);
-		N = perturbNormal(N, -V, uv, texture_normal);
-	}
+	//if (u_maps[NORMALMAP] != 0) {
+	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
+	//	texture_normal = (texture_normal * 2.0) - 1.0;
+	//	texture_normal = normalize(texture_normal);
+	//	N = perturbNormal(N, -V, uv, texture_normal);
+	//}
 
 	// diffuse
 	if (u_light_type == LT_DIRECTIONAL)
@@ -619,7 +599,7 @@ void main()
 	R = reflect(-L, N); // minus because of reflect function first argument is incident
 	R_dot_V = clamp(dot(R, V), 0.0, 1.0);
 
-	specular_term = pow(R_dot_V, shininess) * light_intensity;
+	specular_term = pow(R_dot_V, u_shininess) * light_intensity;
 
 	// add diffuse and specular terms
 	final_light += diffuse_term;
@@ -722,12 +702,12 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	if (u_maps[NORMALMAP] != 0) {
-		vec3 texture_normal = texture(u_normal_map, uv).xyz;
-		texture_normal = (texture_normal * 2.0) - 1.0;
-		texture_normal = normalize(texture_normal);
-		N = perturbNormal(N, -V, uv, texture_normal);
-	}
+	//if (u_maps[NORMALMAP] != 0) {
+	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
+	//	texture_normal = (texture_normal * 2.0) - 1.0;
+	//	texture_normal = normalize(texture_normal);
+	//	N = perturbNormal(N, -V, uv, texture_normal);
+	//}
 
 	gbuffer_albedo = vec4(color.xyz, color.a);
 	gbuffer_normal_mat = vec4(N*0.5+0.5, 1.0);
@@ -775,6 +755,7 @@ void main()
 	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = texture(u_gbuffer_normal, uv).rgb;
+	N = N * 2.0 - 1.0;
 	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
@@ -837,5 +818,4 @@ void main()
 	}
 
 	FragColor = vec4(final_light * color, 1.0);
-	//FragColor = vec4(N, 1.0);
 }

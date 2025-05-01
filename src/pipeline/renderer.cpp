@@ -335,6 +335,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
+	shader->setUniform("u_shininess", shininess);
+
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
 		if (!gbuffer_pass)

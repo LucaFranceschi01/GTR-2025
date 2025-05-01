@@ -33,7 +33,7 @@ namespace SCN {
 	public:
 		bool render_wireframe;
 		bool render_boundaries;
-		bool singlepass_on = false;
+		bool singlepass_on = true;
 		bool front_face_culling_on = false;
 		bool deferred_on = true;
 

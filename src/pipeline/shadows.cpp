@@ -32,6 +32,7 @@ void SCN::Shadows::updateShadowAtlasSize(int shadows_count)
 		shadow_map_count = shadows_count;
 
 		shadow_atlas_dims.y = ceil(float(shadow_map_count) / float(shadow_atlas_dims.x));
+		shadow_atlas_dims.y = max(shadow_atlas_dims.y, 1);
 
 		shadow_atlas = new GFX::FBO();
 		shadow_atlas->setDepthOnly(shadow_map_res * shadow_atlas_dims.x, shadow_map_res * shadow_atlas_dims.y);
@@ -84,7 +85,7 @@ void SCN::Shadows::generateShadowMaps(std::vector<s_DrawCommand>& opaque, std::v
 			);
 		}
 		else if (light->light_type == SCN::eLightType::SPOT) {
-			light_camera.setPerspective(light->cone_info.y, 1.f, light->near_distance, light->max_distance);
+			light_camera.setPerspective(light->cone_info.y * 2.f, 1.f, light->near_distance, light->max_distance);
 		}
 		else {
 			continue;

@@ -70,16 +70,16 @@ void SCN::LightUniforms::bind(GFX::Shader* shader) const
 	shader->setUniform("u_ambient_light", ambient_light);
 	shader->setUniform("u_light_count", l_count);
 
-	shader->setUniform1Array("u_light_intensity", intensities, MAX_LIGHTS);
-	shader->setUniform1Array("u_light_type", types, MAX_LIGHTS);
-	shader->setUniform3Array("u_light_position", (float*)positions, MAX_LIGHTS); // vector
-	shader->setUniform3Array("u_light_color", (float*)colors, MAX_LIGHTS);
+	shader->setUniform1Array("u_light_intensities", intensities, MAX_LIGHTS);
+	shader->setUniform1Array("u_light_types", types, MAX_LIGHTS);
+	shader->setUniform3Array("u_light_positions", (float*)positions, MAX_LIGHTS); // vector
+	shader->setUniform3Array("u_light_colors", (float*)colors, MAX_LIGHTS);
 
 	// for directional lights
-	shader->setUniform3Array("u_light_direction", (float*)directions, MAX_LIGHTS);
+	shader->setUniform3Array("u_light_directions", (float*)directions, MAX_LIGHTS);
 
 	// for spotlights
-	shader->setUniform2Array("u_light_cone", (float*)cone_info, MAX_LIGHTS);
+	shader->setUniform2Array("u_light_cones", (float*)cone_info, MAX_LIGHTS);
 
 	shader->setMatrix44Array("u_shadowmap_viewprojections", (Matrix44*)viewprojections, MAX_LIGHTS);
 	shader->setUniform1Array("u_light_cast_shadowss", cast_shadows, MAX_LIGHTS);

@@ -4,13 +4,14 @@
 #include "light.h"
 #include "shadows.h"
 
+#include "gfx/fbo.h"
+
 //forward declarations
 class Camera;
 class Skeleton;
 namespace GFX {
 	class Shader;
 	class Mesh;
-	class FBO;
 }
 
 namespace SCN {
@@ -32,8 +33,9 @@ namespace SCN {
 	public:
 		bool render_wireframe;
 		bool render_boundaries;
-		bool singlepass_on = false;
-		bool front_face_culling_on = false;
+		bool singlepass_on = true;
+		bool front_face_culling_on = true;
+		bool deferred_on = true;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -46,6 +48,10 @@ namespace SCN {
 		std::vector<SCN::s_DrawCommand> draw_commands_transp;
 		
 		SCN::LightUniforms light_info;
+
+		GFX::FBO gbuffer_fbo;
+
+		float shininess = 30.f;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
@@ -62,11 +68,17 @@ namespace SCN {
 		void renderSkybox(GFX::Texture* cubemap);
 
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, bool gbuffer_pass = false);
 
 		void showUI();
 		
 		// Recursively iterate over all children of a node, adding the needed ones to renderables list
 		void parseNodes(SCN::Node* node, Camera* cam);
+
+		// Fill the G-Buffer with the information from opaque and transparent geometry
+		void fillGBuffer();
+
+		// Display the scene through deferred render using the G-Buffer information
+		void displayScene(SCN::Scene* scene, Camera* camera);
 	};
 };

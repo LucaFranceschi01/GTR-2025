@@ -36,6 +36,13 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
+
+	gbuffer_fbo.create(CORE::BaseApplication::instance->window_width,
+		CORE::BaseApplication::instance->window_height,
+		2, // Create two textures to render to
+		GL_RGBA, // Each texture has an R G B and A channels
+		GL_UNSIGNED_BYTE, // Uses 8 bits per channel
+		true); // Stores the depth, to a texture
 }
 
 void Renderer::setupScene()
@@ -78,6 +85,70 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 		draw_commands_opaque.push_back(draw_command);
 	}
 	// end transparencies
+}
+
+void SCN::Renderer::fillGBuffer()
+{
+	gbuffer_fbo.bind();
+	// Clear the FBO from the prev frame
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	//render skybox
+	if (skybox_cubemap)
+		renderSkybox(skybox_cubemap);
+
+	for (s_DrawCommand& command : draw_commands_opaque) {
+		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
+	}
+
+	for (s_DrawCommand& command : draw_commands_transp) {
+		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
+	}
+
+	gbuffer_fbo.unbind();
+}
+
+void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
+{
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+
+	GFX::Shader* shader = GFX::Shader::Get("singlepass_phong_deferred");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	if (singlepass_on) {
+		light_info.bind(shader);
+
+		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+
+		// Bind the GBuffers
+		shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 9);
+		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
+		shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
+
+		shader->setUniform("u_res_inv",
+			vec2(1.0f / CORE::BaseApplication::instance->window_width,
+				 1.0f / CORE::BaseApplication::instance->window_height
+			)
+		);
+
+		shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+		shader->setUniform("u_shininess", shininess);
+
+		shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+		shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
+
+		shader->setUniform("u_bg_color", scene->background_color);
+		
+		quad->render(GL_TRIANGLES);
+	}
+	shader->disable();
 }
 
 void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
@@ -150,18 +221,25 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	GFX::checkGLErrors();
 
-	//render skybox
-	if(skybox_cubemap)
-		renderSkybox(skybox_cubemap);
+	if (deferred_on) {
+		fillGBuffer();
 
-	// first render opaque entities
-	for (s_DrawCommand command : draw_commands_opaque) {
-		renderMeshWithMaterial(command.model, command.mesh, command.material);
+		displayScene(scene, camera);
 	}
+	else {
+		//render skybox
+		if(skybox_cubemap)
+			renderSkybox(skybox_cubemap);
 
-	// then render transparent entities
-	for (s_DrawCommand command : draw_commands_transp) {
-		renderMeshWithMaterial(command.model, command.mesh, command.material);
+		// first render opaque entities
+		for (s_DrawCommand& command : draw_commands_opaque) {
+			renderMeshWithMaterial(command.model, command.mesh, command.material);
+		}
+
+		// then render transparent entities
+		for (s_DrawCommand& command : draw_commands_transp) {
+			renderMeshWithMaterial(command.model, command.mesh, command.material);
+		}
 	}
 }
 
@@ -180,7 +258,8 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox");
+	GFX::Shader* shader = NULL;
+	(deferred_on) ? shader = GFX::Shader::Get("skybox_deferred") : shader = GFX::Shader::Get("skybox");
 	if (!shader)
 		return;
 	shader->enable();
@@ -207,7 +286,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 }
 
 // Renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
+void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, bool gbuffer_pass)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material )
@@ -221,7 +300,10 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	if (singlepass_on) {
+	if (gbuffer_pass) {
+		shader = GFX::Shader::Get("texture_deferred");
+	}
+	else if (singlepass_on) {
 		shader = GFX::Shader::Get("singlepass");
 	}
 	else {
@@ -229,7 +311,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		glDepthFunc(GL_LEQUAL);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	}
-
+	
 	assert(glGetError() == GL_NO_ERROR);
 
 	//no shader? then nothing to render
@@ -253,11 +335,16 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
+	shader->setUniform("u_shininess", shininess);
+
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
-		light_info.bind(shader);
+		if (!gbuffer_pass)
+		{
+			light_info.bind(shader);
 
-		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+			shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+		}
 
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
@@ -265,16 +352,18 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	else {
 		for (int i = 0; i < light_info.l_count; i++) {
 
-			if (i == 0) {
-				glDisable(GL_BLEND);
-			}
-			else {
-				glEnable(GL_BLEND);
-			}
-			
-			light_info.bind_single(shader, i);
+			if (!gbuffer_pass) {
+				if (i == 0) {
+					glDisable(GL_BLEND);
+				}
+				else {
+					glEnable(GL_BLEND);
+				}
 
-			shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
+				light_info.bind_single(shader, i);
+
+				shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
+			}
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -289,8 +378,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	//set the render state as it was before to avoid problems with future renders
 	glDisable(GL_BLEND);
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	glDepthFunc(GL_LESS);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 #ifndef SKIP_IMGUI
@@ -308,6 +398,9 @@ void Renderer::showUI()
 
 	// for shadow atlas
 	Shadows::showUI(shadow_info);
+
+	ImGui::Checkbox("Deferred rendering", &deferred_on);
+	ImGui::SliderFloat("Phong Shininess", &shininess, 20.f, 80.f);
 }
 
 #else

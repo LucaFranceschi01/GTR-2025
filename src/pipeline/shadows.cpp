@@ -51,12 +51,9 @@ void SCN::Shadows::generateShadowMaps(std::vector<s_DrawCommand>& opaque, std::v
 
 	glClear(GL_DEPTH_BUFFER_BIT);
 
-	if (ffc == false) {
-		glDisable(GL_CULL_FACE);
-	}
-	else {
+	if (ffc) {
 		glEnable(GL_CULL_FACE);
-		//glFrontFace(GL_CW);
+		glFrontFace(GL_CW);
 	}
 
 	for (int i = 0; i < shadow_map_count; i++) {
@@ -105,10 +102,10 @@ void SCN::Shadows::generateShadowMaps(std::vector<s_DrawCommand>& opaque, std::v
 	}
 	// Disable the default front face culling
 	glDisable(GL_CULL_FACE);
+	glFrontFace(GL_CCW);
 
 	glDisable(GL_DEPTH_TEST);
 	glColorMask(true, true, true, true);
-
 	shadow_atlas->unbind();
 }
 

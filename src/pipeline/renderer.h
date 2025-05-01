@@ -34,7 +34,7 @@ namespace SCN {
 		bool render_wireframe;
 		bool render_boundaries;
 		bool singlepass_on = true;
-		bool front_face_culling_on = false;
+		bool front_face_culling_on = true;
 		bool deferred_on = true;
 
 		GFX::Texture* skybox_cubemap;

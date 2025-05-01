@@ -754,13 +754,13 @@ void main()
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
-	vec3 N = texture(u_gbuffer_normal, uv).rgb;
-	N = N * 2.0 - 1.0;
+	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
+	vec3 N = N0 * 2.0 - 1.0;
 	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
-	vec3 tmp = N - u_bg_color;
+	vec3 tmp = N0 - u_bg_color;
 	tmp = tmp * tmp;
 	if (tmp.x + tmp.y + tmp.z < 0.0001){
 		FragColor = vec4(color, 1.0);

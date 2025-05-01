@@ -79,6 +79,6 @@ namespace SCN {
 		void fillGBuffer();
 
 		// Display the scene through deferred render using the G-Buffer information
-		void displayScene(Camera* camera);
+		void displayScene(SCN::Scene* scene, Camera* camera);
 	};
 };

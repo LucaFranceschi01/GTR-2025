@@ -93,6 +93,10 @@ void SCN::Renderer::fillGBuffer()
 	// Clear the FBO from the prev frame
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+	//render skybox
+	if (skybox_cubemap)
+		renderSkybox(skybox_cubemap);
+
 	for (s_DrawCommand& command : draw_commands_opaque) {
 		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
 	}
@@ -104,7 +108,7 @@ void SCN::Renderer::fillGBuffer()
 	gbuffer_fbo.unbind();
 }
 
-void SCN::Renderer::displayScene(Camera* camera)
+void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
@@ -139,6 +143,8 @@ void SCN::Renderer::displayScene(Camera* camera)
 
 		shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 		shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
+
+		shader->setUniform("u_bg_color", scene->background_color);
 		
 		quad->render(GL_TRIANGLES);
 	}
@@ -215,16 +221,16 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	GFX::checkGLErrors();
 
-	//render skybox
-	if(skybox_cubemap)
-		renderSkybox(skybox_cubemap);
-
 	if (deferred_on) {
 		fillGBuffer();
 
-		displayScene(camera);
+		displayScene(scene, camera);
 	}
 	else {
+		//render skybox
+		if(skybox_cubemap)
+			renderSkybox(skybox_cubemap);
+
 		// first render opaque entities
 		for (s_DrawCommand& command : draw_commands_opaque) {
 			renderMeshWithMaterial(command.model, command.mesh, command.material);
@@ -252,7 +258,8 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	if (render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	GFX::Shader* shader = GFX::Shader::Get("skybox");
+	GFX::Shader* shader = NULL;
+	(deferred_on) ? shader = GFX::Shader::Get("skybox_deferred") : shader = GFX::Shader::Get("skybox");
 	if (!shader)
 		return;
 	shader->enable();

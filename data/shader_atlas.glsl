@@ -751,6 +751,7 @@ uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform float u_shininess;
+uniform vec3 u_bg_color;
 
 out vec4 FragColor;
 
@@ -766,7 +767,7 @@ void main()
 	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
 	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
 
-	vec4 color = texture(u_gbuffer_color, uv);
+	vec3 color = texture(u_gbuffer_color, uv).rgb;
 	
 	vec3 final_light = u_ambient_light;
 
@@ -775,6 +776,15 @@ void main()
 	
 	vec3 N = texture(u_gbuffer_normal, uv).rgb;
 	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+
+	// if the normal is equal to the background color --> skip shading (for skybox)
+	// calculate the squared error, since it seems that comparisons are not performed properly
+	vec3 tmp = N - u_bg_color;
+	tmp = tmp * tmp;
+	if (tmp.x + tmp.y + tmp.z < 0.0001){
+		FragColor = vec4(color, 1.0);
+		return;
+	}
 
 	for (int i=0; i<u_light_count; i++)
 	{
@@ -826,5 +836,6 @@ void main()
 		final_light += specular_term;
 	}
 
-	FragColor = vec4(final_light * color.xyz, color.a);
+	FragColor = vec4(final_light * color, 1.0);
+	//FragColor = vec4(N, 1.0);
 }

@@ -36,6 +36,13 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
+
+	gbuffer_fbo.create(CORE::BaseApplication::instance->window_width,
+		CORE::BaseApplication::instance->window_height,
+		2, // Create two textures to render to
+		GL_RGBA, // Each texture has an R G B and A channels
+		GL_UNSIGNED_BYTE, // Uses 8 bits per channel
+		true); // Stores the depth, to a texture
 }
 
 void Renderer::setupScene()
@@ -78,6 +85,23 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 		draw_commands_opaque.push_back(draw_command);
 	}
 	// end transparencies
+}
+
+void SCN::Renderer::fillGBuffer()
+{
+	gbuffer_fbo.bind();
+	// Clear the FBO from the prev frame
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	for (s_DrawCommand& command : draw_commands_opaque) {
+		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
+	}
+
+	for (s_DrawCommand& command : draw_commands_transp) {
+		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
+	}
+
+	gbuffer_fbo.unbind();
 }
 
 void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
@@ -143,6 +167,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	
 	shadow_info.generateShadowMaps(draw_commands_opaque, draw_commands_transp, light_info, front_face_culling_on);
 
+	fillGBuffer();
+
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -155,12 +181,12 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 		renderSkybox(skybox_cubemap);
 
 	// first render opaque entities
-	for (s_DrawCommand command : draw_commands_opaque) {
+	for (s_DrawCommand& command : draw_commands_opaque) {
 		renderMeshWithMaterial(command.model, command.mesh, command.material);
 	}
 
 	// then render transparent entities
-	for (s_DrawCommand command : draw_commands_transp) {
+	for (s_DrawCommand& command : draw_commands_transp) {
 		renderMeshWithMaterial(command.model, command.mesh, command.material);
 	}
 }
@@ -207,7 +233,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 }
 
 // Renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
+void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, bool gbuffer_pass)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material )
@@ -221,7 +247,10 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	glEnable(GL_DEPTH_TEST);
 
 	//chose a shader
-	if (singlepass_on) {
+	if (gbuffer_pass) {
+		shader = GFX::Shader::Get("phong_deferred");
+	}
+	else if (singlepass_on) {
 		shader = GFX::Shader::Get("singlepass");
 	}
 	else {
@@ -229,7 +258,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 		glDepthFunc(GL_LEQUAL);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	}
-
+	
 	assert(glGetError() == GL_NO_ERROR);
 
 	//no shader? then nothing to render
@@ -255,9 +284,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	if (singlepass_on) {
 		// Upload all uniforms related to lighting
-		light_info.bind(shader);
+		if (!gbuffer_pass)
+		{
+			light_info.bind(shader);
 
-		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+			shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+		}
 
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
@@ -265,16 +297,18 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 	else {
 		for (int i = 0; i < light_info.l_count; i++) {
 
-			if (i == 0) {
-				glDisable(GL_BLEND);
-			}
-			else {
-				glEnable(GL_BLEND);
-			}
-			
-			light_info.bind_single(shader, i);
+			if (!gbuffer_pass) {
+				if (i == 0) {
+					glDisable(GL_BLEND);
+				}
+				else {
+					glEnable(GL_BLEND);
+				}
 
-			shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
+				light_info.bind_single(shader, i);
+
+				shadow_info.bindShadowAtlasPosition(shader, light_info.shadow_lights_idxs, i);
+			}
 
 			mesh->render(GL_TRIANGLES);
 		}
@@ -289,8 +323,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	//set the render state as it was before to avoid problems with future renders
 	glDisable(GL_BLEND);
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	glDepthFunc(GL_LESS);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 #ifndef SKIP_IMGUI

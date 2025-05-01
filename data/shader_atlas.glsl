@@ -8,6 +8,8 @@ compute test.cs
 singlepass basic.vs single_phong.fs
 multipass basic.vs multi_phong.fs
 plain basic.vs plain.fs
+skybox_deferred basic.vs skybox_deferred.fs
+phong_deferred basic.vs phong_deferred.fs
 
 \test.cs
 #version 430 core
@@ -654,4 +656,80 @@ void main ()
 		discard;
 
 	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+}
+
+\skybox_deferred.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+
+uniform samplerCube u_texture;
+uniform vec3 u_camera_position;
+
+layout(location = 0) out vec4 gbuffer_albedo;
+
+void main()
+{
+	vec3 E = v_world_position - u_camera_position;
+	vec4 color = texture( u_texture, E );
+	gbuffer_albedo = color;
+}
+
+\phong_deferred.fs
+
+#version 330 core
+
+#include utils
+#include constants
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform float u_time;
+uniform vec3 u_camera_position;
+
+// start material-related inputs ==============================================
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+// end material-related inputs ================================================
+
+
+// start maps =================================================================
+uniform int u_maps[MAX_MAPS];
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_map;
+// end maps ===================================================================
+
+layout(location = 0) out vec4 gbuffer_albedo;
+layout(location = 1) out vec4 gbuffer_normal_mat;
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color; // should always be 1 if not changed somehow
+
+	if (u_maps[ALBEDO] != 0){
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+	
+	vec3 N = normalize(v_normal);
+	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	}
+
+	gbuffer_albedo = vec4(color.xyz, color.a);
+	gbuffer_normal_mat = vec4(N*0.5+0.5, 1.0);
 }

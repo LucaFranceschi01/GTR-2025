@@ -4,13 +4,14 @@
 #include "light.h"
 #include "shadows.h"
 
+#include "gfx/fbo.h"
+
 //forward declarations
 class Camera;
 class Skeleton;
 namespace GFX {
 	class Shader;
 	class Mesh;
-	class FBO;
 }
 
 namespace SCN {
@@ -47,6 +48,8 @@ namespace SCN {
 		
 		SCN::LightUniforms light_info;
 
+		GFX::FBO gbuffer_fbo;
+
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
 
@@ -62,11 +65,14 @@ namespace SCN {
 		void renderSkybox(GFX::Texture* cubemap);
 
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, bool gbuffer_pass = false);
 
 		void showUI();
 		
 		// Recursively iterate over all children of a node, adding the needed ones to renderables list
 		void parseNodes(SCN::Node* node, Camera* cam);
+
+		// Fill the G-Buffer with the information from the scene
+		void fillGBuffer();
 	};
 };

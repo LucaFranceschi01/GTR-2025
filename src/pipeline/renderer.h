@@ -35,6 +35,7 @@ namespace SCN {
 		bool render_boundaries;
 		bool singlepass_on = false;
 		bool front_face_culling_on = false;
+		bool deferred_on = true;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -49,6 +50,8 @@ namespace SCN {
 		SCN::LightUniforms light_info;
 
 		GFX::FBO gbuffer_fbo;
+
+		float shininess = 30.f;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
@@ -72,7 +75,10 @@ namespace SCN {
 		// Recursively iterate over all children of a node, adding the needed ones to renderables list
 		void parseNodes(SCN::Node* node, Camera* cam);
 
-		// Fill the G-Buffer with the information from the scene
+		// Fill the G-Buffer with the information from opaque and transparent geometry
 		void fillGBuffer();
+
+		// Display the scene through deferred render using the G-Buffer information
+		void displayScene(Camera* camera);
 	};
 };

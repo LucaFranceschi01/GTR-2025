@@ -9,7 +9,8 @@ singlepass basic.vs single_phong.fs
 multipass basic.vs multi_phong.fs
 plain basic.vs plain.fs
 skybox_deferred basic.vs skybox_deferred.fs
-phong_deferred basic.vs phong_deferred.fs
+texture_deferred basic.vs texture_deferred.fs
+singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 
 \test.cs
 #version 430 core
@@ -280,6 +281,27 @@ const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
 const uint MAX_MAPS = 6;
 
+\lights
+
+uniform vec3 u_ambient_light;
+
+// for singlepass
+uniform int u_light_count;
+uniform float u_light_intensities[MAX_LIGHTS];
+uniform float u_light_types[MAX_LIGHTS];
+uniform vec3 u_light_positions[MAX_LIGHTS];
+uniform vec3 u_light_colors[MAX_LIGHTS];
+uniform vec3 u_light_directions[MAX_LIGHTS];
+uniform vec2 u_light_cones[MAX_LIGHTS]; // alpha_min and alpha_max in radians
+
+// for multipass
+uniform float u_light_intensity;
+uniform float u_light_type;
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform vec3 u_light_direction;
+uniform vec2 u_light_cone; // alpha_min and alpha_max in radians
+
 \shadows
 
 // start shadowmaps inputs ====================================================
@@ -334,7 +356,7 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 	vec4 proj_pos_clip = proj_pos / proj_pos.w;
 
 	// from clip space to uv space
-	vec3 proj_pos_uv = (proj_pos_clip.xyz + vec3(1.0)) / 2.0;
+	vec3 proj_pos_uv = proj_pos_clip.xyz * 0.5 + 0.5;
 
 	// get point depth in uv space
 	float real_depth = proj_pos_uv.z;
@@ -357,6 +379,7 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 
 #include utils
 #include constants
+#include lights
 #include shadows
 
 in vec3 v_position;
@@ -367,19 +390,6 @@ in vec4 v_color;
 
 uniform float u_time;
 uniform vec3 u_camera_position;
-
-// start light inputs =========================================================
-uniform vec3 u_ambient_light;
-uniform int u_light_count;
-
-uniform float u_light_intensity[MAX_LIGHTS];
-uniform float u_light_type[MAX_LIGHTS];
-uniform vec3 u_light_position[MAX_LIGHTS];
-uniform vec3 u_light_color[MAX_LIGHTS];
-uniform vec3 u_light_direction[MAX_LIGHTS];
-uniform vec2 u_light_cone[MAX_LIGHTS]; // alpha_min and alpha_max in radians
-// end light inputs ===========================================================
-
 
 // start material-related inputs ==============================================
 uniform vec4 u_color;
@@ -439,22 +449,22 @@ void main()
 	for (int i=0; i<u_light_count; i++)
 	{
 		// diffuse
-		if (u_light_type[i] == LT_DIRECTIONAL) {
-			L = u_light_direction[i];
+		if (u_light_types[i] == LT_DIRECTIONAL) {
+			L = u_light_directions[i];
 			L = normalize(L);
 
 			float shadow_factor = 1.0;
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
-			light_intensity = u_light_color[i] * u_light_intensity[i] * shadow_factor; // No attenuation for directional light
-		} else if (u_light_type[i] == LT_POINT) {
-			L = u_light_position[i] - v_world_position;
+			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+		} else if (u_light_types[i] == LT_POINT) {
+			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
-			light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2); // light intensity reduced by distance
-		} else if (u_light_type[i] == LT_SPOT) {
-			L = u_light_position[i] - v_world_position;
+			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		} else if (u_light_types[i] == LT_SPOT) {
+			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
 
@@ -462,12 +472,12 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
-			numerator = clamp(dot(L, normalize(u_light_direction[i])), 0.0, 1.0) - cos(u_light_cone[i].y);
+			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
-				light_intensity = u_light_color[i] * u_light_intensity[i] / pow(dist, 2);
+				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 				light_intensity *= numerator;
-				light_intensity /= (cos(u_light_cone[i].x) - cos(u_light_cone[i].y));
+				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
 			}
 		}
@@ -495,6 +505,7 @@ void main()
 
 #include utils
 #include constants
+#include lights
 #include shadows
 
 in vec3 v_position;
@@ -505,18 +516,6 @@ in vec4 v_color;
 
 uniform float u_time;
 uniform vec3 u_camera_position;
-
-// start light inputs =========================================================
-uniform vec3 u_ambient_light;
-
-uniform float u_light_intensity;
-uniform float u_light_type;
-uniform vec3 u_light_position;
-uniform vec3 u_light_color;
-uniform vec3 u_light_direction;
-uniform vec2 u_light_cone; // alpha_min and alpha_max in radians
-// end light inputs ===========================================================
-
 
 // start material-related inputs ==============================================
 uniform vec4 u_color;
@@ -677,7 +676,7 @@ void main()
 	gbuffer_albedo = color;
 }
 
-\phong_deferred.fs
+\texture_deferred.fs
 
 #version 330 core
 
@@ -732,4 +731,100 @@ void main()
 
 	gbuffer_albedo = vec4(color.xyz, color.a);
 	gbuffer_normal_mat = vec4(N*0.5+0.5, 1.0);
+}
+
+\singlepass_phong_deferred.fs
+
+#version 330 core
+
+#include constants
+#include lights
+#include shadows
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_inv_vp_mat;
+uniform vec3 u_camera_position;
+uniform float u_shininess;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+
+	vec4 color = texture(u_gbuffer_color, uv);
+	
+	vec3 final_light = u_ambient_light;
+
+	vec3 diffuse_term, specular_term, light_intensity, L, R;
+	float N_dot_L, R_dot_V, dist, numerator;
+	
+	vec3 N = texture(u_gbuffer_normal, uv).rgb;
+	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+
+	for (int i=0; i<u_light_count; i++)
+	{
+		// diffuse
+		if (u_light_types[i] == LT_DIRECTIONAL) {
+			L = u_light_directions[i];
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
+
+			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+		} else if (u_light_types[i] == LT_POINT) {
+			L = u_light_positions[i] - world_pos;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		} else if (u_light_types[i] == LT_SPOT) {
+			L = u_light_positions[i] - world_pos;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
+
+			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
+			light_intensity = vec3(0.0);
+			if (numerator >= 0) {
+				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity *= numerator;
+				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
+				light_intensity *= shadow_factor;
+			}
+		}
+
+		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
+		diffuse_term = N_dot_L * light_intensity;
+
+		// specular
+		R = reflect(-L, N); // minus because of reflect function first argument is incident
+		R_dot_V = clamp(dot(R, V), 0.0, 1.0);
+
+		specular_term = pow(R_dot_V, u_shininess) * light_intensity;
+
+		// add diffuse and specular terms
+		final_light += diffuse_term;
+		final_light += specular_term;
+	}
+
+	FragColor = vec4(final_light * color.xyz, color.a);
 }

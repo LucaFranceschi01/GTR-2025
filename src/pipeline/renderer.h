@@ -49,7 +49,7 @@ namespace SCN {
 		
 		SCN::LightUniforms light_info;
 
-		GFX::FBO gbuffer_fbo;
+		GFX::FBO gbuffer_fbo, lighting_fbo;
 
 		float shininess = 30.f;
 

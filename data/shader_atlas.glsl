@@ -763,8 +763,7 @@ void main()
 	vec3 tmp = N0 - u_bg_color;
 	tmp = tmp * tmp;
 	if (tmp.x + tmp.y + tmp.z < 0.0001){
-		FragColor = vec4(color, 1.0);
-		return;
+		discard;
 	}
 
 	for (int i=0; i<u_light_count; i++)

@@ -43,6 +43,13 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		GL_RGBA, // Each texture has an R G B and A channels
 		GL_UNSIGNED_BYTE, // Uses 8 bits per channel
 		true); // Stores the depth, to a texture
+
+	lighting_fbo.create(CORE::BaseApplication::instance->window_width,
+		CORE::BaseApplication::instance->window_height,
+		1,
+		GL_RGBA,
+		GL_UNSIGNED_BYTE,
+		true);
 }
 
 void Renderer::setupScene()
@@ -92,10 +99,6 @@ void SCN::Renderer::fillGBuffer()
 	gbuffer_fbo.bind();
 	// Clear the FBO from the prev frame
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	//render skybox
-	if (skybox_cubemap)
-		renderSkybox(skybox_cubemap);
 
 	for (s_DrawCommand& command : draw_commands_opaque) {
 		renderMeshWithMaterial(command.model, command.mesh, command.material, true);
@@ -221,16 +224,16 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	GFX::checkGLErrors();
 
+	//render skybox
+	if (skybox_cubemap)
+		renderSkybox(skybox_cubemap);
+
 	if (deferred_on) {
 		fillGBuffer();
 
 		displayScene(scene, camera);
 	}
 	else {
-		//render skybox
-		if(skybox_cubemap)
-			renderSkybox(skybox_cubemap);
-
 		// first render opaque entities
 		for (s_DrawCommand& command : draw_commands_opaque) {
 			renderMeshWithMaterial(command.model, command.mesh, command.material);

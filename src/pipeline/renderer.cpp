@@ -123,26 +123,63 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	// Set the OpenGL config
-	glDepthFunc(GL_GREATER);
-	glDepthMask(GL_FALSE);
-	glBlendFunc(GL_ONE, GL_ONE);
-	glEnable(GL_BLEND);
-	glFrontFace(GL_CW);
-	
-	GFX::Mesh* quad = GFX::Mesh::getQuad();
-
-	GFX::Shader* shader = GFX::Shader::Get("lighting_phong_deferred");
+	//glClearColor(0.0, 0.0, 0.0, 1.0);
 
 	assert(glGetError() == GL_NO_ERROR);
 
-	//no shader? then nothing to render
-	if (!shader)
-		return;
-	shader->enable();
-
 	if (singlepass_on) {
+		// ================================================= FIRST PASS
+		GFX::Mesh* quad = GFX::Mesh::getQuad();
+
+		GFX::Shader* shader = GFX::Shader::Get("lighting_phong_deferred_firstpass");
+
+		if (!shader)
+			return;
+		shader->enable();
+
+		light_info.bind(shader);
+
+		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+
+		shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 9);
+		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
+		shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
+
+		shader->setUniform("u_res_inv",
+			vec2(1.0f / CORE::BaseApplication::instance->window_width,
+				1.0f / CORE::BaseApplication::instance->window_height
+			)
+		);
+
+		shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+		shader->setUniform("u_shininess", shininess);
+
+		shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+		shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
+
+		shader->setUniform("u_bg_color", scene->background_color);
+
+		quad->render(GL_TRIANGLES);
+
+		shader->disable();
+		
+		// Set the OpenGL config
+		glDepthFunc(GL_GREATER);
+		glDepthMask(GL_FALSE);
+		glBlendFunc(GL_ONE, GL_ONE);
+		glFrontFace(GL_CW);
+		glDisable(GL_BLEND);
+
+		// ================================================= LIGHT PASSES
+		
+		shader = GFX::Shader::Get("lighting_phong_deferred_volume_lights");
+
+		//no shader? then nothing to render
+		if (!shader)
+			return;
+		shader->enable();
+
 		light_info.bind(shader);
 
 		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
@@ -167,9 +204,35 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 		shader->setUniform("u_bg_color", scene->background_color);
 
-		quad->render(GL_TRIANGLES);
+		vec3 pos;
+		mat4 model;
+
+		// Create the model from the light data.
+		sphere.createSphere(1.0); // esto fuera
+		
+		for (int i = 0; i < light_info.l_count; i++) {
+			LightEntity* light = light_info.entities[i];
+
+			if (light->light_type == eLightType::DIRECTIONAL) continue;
+
+			// Upload the necessary uniforms.
+			shader->setUniform("u_light_id", i);
+
+
+			pos = light_info.positions[i];
+			model.setTranslation(pos.x, pos.y, pos.z);
+			// set scale
+
+
+			shader->setUniform("u_model", model);
+
+			sphere.render(GL_TRIANGLES);
+		}
+		
+
+		shader->disable();
+		
 	}
-	shader->disable();
 
 	// Return the OpenGL config to what it was
 	glDepthFunc(GL_LESS);
@@ -230,7 +293,7 @@ void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
-	GFX::Shader* shader = GFX::Shader::Get("light_volumes_phong_deferred");
+	GFX::Shader* shader = GFX::Shader::Get("deferred_compose_all");
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -340,7 +403,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 		if (light_volumes_on) {
 			fillLightingFBO(scene, camera);
-			displayScene(scene, camera);
+			//displayScene(scene, camera);
+			lighting_fbo.color_textures[0]->toViewport();
 		}
 		else {
 			displaySceneSinglepass(scene, camera);

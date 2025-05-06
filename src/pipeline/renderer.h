@@ -36,6 +36,7 @@ namespace SCN {
 		bool singlepass_on = true;
 		bool front_face_culling_on = true;
 		bool deferred_on = true;
+		bool light_volumes_on = true;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -80,5 +81,8 @@ namespace SCN {
 
 		// Display the scene through deferred render using the G-Buffer information
 		void displayScene(SCN::Scene* scene, Camera* camera);
+		void displaySceneSinglepass(SCN::Scene* scene, Camera* camera);
+
+		void fillLightingFBO(SCN::Scene* scene, Camera* camera);
 	};
 };

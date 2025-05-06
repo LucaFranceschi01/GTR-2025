@@ -54,6 +54,8 @@ Renderer::Renderer(const char* shader_atlas_filename)
 
 void Renderer::setupScene()
 {
+	light_info.ambient_light = scene->ambient_light;
+	
 	if (scene->skybox_filename.size())
 		skybox_cubemap = GFX::Texture::Get(std::string(scene->base_folder + "/" + scene->skybox_filename).c_str());
 	else
@@ -111,7 +113,77 @@ void SCN::Renderer::fillGBuffer()
 	gbuffer_fbo.unbind();
 }
 
-void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
+void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
+{
+	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
+
+	lighting_fbo.bind();
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Set the OpenGL config
+	glDepthFunc(GL_GREATER);
+	glDepthMask(GL_FALSE);
+	glBlendFunc(GL_ONE, GL_ONE);
+	glEnable(GL_BLEND);
+	glFrontFace(GL_CW);
+	
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+
+	GFX::Shader* shader = GFX::Shader::Get("lighting_phong_deferred");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	if (singlepass_on) {
+		light_info.bind(shader);
+
+		shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
+
+		// Bind the GBuffers
+		shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 9);
+		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
+		shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
+
+		shader->setUniform("u_res_inv",
+			vec2(1.0f / CORE::BaseApplication::instance->window_width,
+				1.0f / CORE::BaseApplication::instance->window_height
+			)
+		);
+
+		shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+		shader->setUniform("u_shininess", shininess);
+
+		shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+		shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
+
+		shader->setUniform("u_bg_color", scene->background_color);
+
+		quad->render(GL_TRIANGLES);
+	}
+	shader->disable();
+
+	// Return the OpenGL config to what it was
+	glDepthFunc(GL_LESS);
+	glDepthMask(GL_TRUE);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_BLEND);
+	glFrontFace(GL_CCW);
+
+	lighting_fbo.unbind();
+
+	//lighting_fbo.color_textures[0]->toViewport();
+}
+
+void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
@@ -149,6 +221,41 @@ void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
 
 		shader->setUniform("u_bg_color", scene->background_color);
 		
+		quad->render(GL_TRIANGLES);
+	}
+	shader->disable();
+}
+
+void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
+{
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+
+	GFX::Shader* shader = GFX::Shader::Get("light_volumes_phong_deferred");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	if (singlepass_on) {
+		// Bind the GBuffers
+		shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 9);
+		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
+		shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
+		shader->setTexture("u_illumination", lighting_fbo.color_textures[0], 12);
+
+		shader->setUniform("u_res_inv",
+			vec2(1.0f / CORE::BaseApplication::instance->window_width,
+				1.0f / CORE::BaseApplication::instance->window_height
+			)
+		);
+
+		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+
+		shader->setUniform("u_bg_color", scene->background_color);
+
 		quad->render(GL_TRIANGLES);
 	}
 	shader->disable();
@@ -231,7 +338,13 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	if (deferred_on) {
 		fillGBuffer();
 
-		displayScene(scene, camera);
+		if (light_volumes_on) {
+			fillLightingFBO(scene, camera);
+			displayScene(scene, camera);
+		}
+		else {
+			displaySceneSinglepass(scene, camera);
+		}
 	}
 	else {
 		// first render opaque entities
@@ -403,6 +516,7 @@ void Renderer::showUI()
 	Shadows::showUI(shadow_info);
 
 	ImGui::Checkbox("Deferred rendering", &deferred_on);
+	ImGui::Checkbox("Light volumes", &light_volumes_on);
 	ImGui::SliderFloat("Phong Shininess", &shininess, 20.f, 80.f);
 }
 

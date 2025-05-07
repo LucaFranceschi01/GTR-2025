@@ -123,7 +123,6 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	//glClearColor(0.0, 0.0, 0.0, 1.0);
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -228,10 +227,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 			sphere.render(GL_TRIANGLES);
 		}
-		
 
 		shader->disable();
-		
 	}
 
 	// Return the OpenGL config to what it was
@@ -242,8 +239,6 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	glFrontFace(GL_CCW);
 
 	lighting_fbo.unbind();
-
-	//lighting_fbo.color_textures[0]->toViewport();
 }
 
 void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
@@ -293,7 +288,7 @@ void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
-	GFX::Shader* shader = GFX::Shader::Get("deferred_compose_all");
+	GFX::Shader* shader = GFX::Shader::Get("deferred_to_viewport");
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -302,25 +297,11 @@ void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
 		return;
 	shader->enable();
 
-	if (singlepass_on) {
-		// Bind the GBuffers
-		shader->setTexture("u_gbuffer_color", gbuffer_fbo.color_textures[0], 9);
-		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
-		shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
-		shader->setTexture("u_illumination", lighting_fbo.color_textures[0], 12);
+	shader->setTexture("u_texture", lighting_fbo.color_textures[0], 12);
+	shader->setUniform("u_bg_color", scene->background_color);
 
-		shader->setUniform("u_res_inv",
-			vec2(1.0f / CORE::BaseApplication::instance->window_width,
-				1.0f / CORE::BaseApplication::instance->window_height
-			)
-		);
+	quad->render(GL_TRIANGLES);
 
-		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
-
-		shader->setUniform("u_bg_color", scene->background_color);
-
-		quad->render(GL_TRIANGLES);
-	}
 	shader->disable();
 }
 
@@ -403,8 +384,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 		if (light_volumes_on) {
 			fillLightingFBO(scene, camera);
-			//displayScene(scene, camera);
-			lighting_fbo.color_textures[0]->toViewport();
+			displayScene(scene, camera);
+			//lighting_fbo.color_textures[0]->toViewport();
 		}
 		else {
 			displaySceneSinglepass(scene, camera);

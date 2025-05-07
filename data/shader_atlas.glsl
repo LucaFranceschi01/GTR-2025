@@ -12,9 +12,9 @@ skybox_deferred basic.vs skybox_deferred.fs
 texture_deferred basic.vs texture_deferred.fs
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 lighting_phong_deferred quad.vs lighting_phong_deferred.fs
-//deferred_compose_all quad.vs deferred_compose_all.fs
 lighting_phong_deferred_firstpass quad.vs lighting_phong_deferred_firstpass.fs
 lighting_phong_deferred_volume_lights basic.vs lighting_phong_deferred_volume_lights.fs
+deferred_to_viewport quad.vs deferred_to_viewport.fs
 
 \test.cs
 #version 430 core
@@ -926,55 +926,6 @@ void main()
 	illumination = vec4(final_light, 1.0);
 }
 
-\deferred_compose_all.fs
-
-#version 330 core
-
-#include constants
-
-in vec2 v_uv;
-
-uniform sampler2D u_gbuffer_color;
-uniform sampler2D u_gbuffer_normal;
-uniform sampler2D u_gbuffer_depth;
-
-uniform sampler2D u_illumination;
-
-uniform vec2 u_res_inv;
-uniform mat4 u_inv_vp_mat;
-uniform vec3 u_bg_color;
-
-out vec4 FragColor;
-
-void main()
-{
-	vec2 uv = gl_FragCoord.xy * u_res_inv;
-
-	float depth = texture(u_gbuffer_depth, uv).r;
-	float depth_clip = depth * 2.0 - 1.0;
-	
-	vec2 uv_clip = uv * 2.0 - 1.0;
-	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
-	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
-	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
-
-	vec3 color = texture(u_gbuffer_color, uv).rgb;
-	
-	vec3 final_light = texture(u_illumination, uv).rgb;
-	
-	vec3 N = texture(u_gbuffer_normal, uv).rgb;
-
-	// if the normal is equal to the background color --> skip shading (for skybox)
-	// calculate the squared error, since it seems that comparisons are not performed properly
-	vec3 tmp = N - u_bg_color;
-	tmp = tmp * tmp;
-	if (tmp.x + tmp.y + tmp.z < 0.0001){
-		discard;
-	}
-
-	FragColor = vec4(final_light * color, 1.0);
-}
-
 \lighting_phong_deferred_firstpass.fs
 
 #version 330 core
@@ -1158,7 +1109,7 @@ void main()
 	illumination = vec4(final_light * color, 1.0);
 }
 
-\lighting_phong_deferred_firstpass2.fs
+\deferred_to_viewport.fs
 
 #version 330 core
 
@@ -1168,73 +1119,23 @@ void main()
 
 in vec2 v_uv;
 
-uniform sampler2D u_gbuffer_normal;
-uniform sampler2D u_gbuffer_depth;
-
-uniform vec2 u_res_inv;
-uniform mat4 u_inv_vp_mat;
-uniform vec3 u_camera_position;
-uniform float u_shininess;
 uniform vec3 u_bg_color;
 
-layout(location = 0) out vec4 illumination;
+uniform sampler2D u_texture;
+
+out vec4 FragColor;
 
 void main()
 {
-	vec2 uv = gl_FragCoord.xy * u_res_inv;
+	vec2 uv = v_uv;
+	vec3 color = texture( u_texture, v_uv ).rgb;	// if the normal is equal to the background color --> skip shading (for skybox)
 
-	float depth = texture(u_gbuffer_depth, uv).r;
-	float depth_clip = depth * 2.0 - 1.0;
-	
-	vec2 uv_clip = uv * 2.0 - 1.0;
-	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
-	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
-	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
-	
-	vec3 final_light = u_ambient_light;
-
-	vec3 diffuse_term, specular_term, light_intensity, L, R;
-	float N_dot_L, R_dot_V, dist, numerator;
-	
-	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
-	vec3 N = N0 * 2.0 - 1.0;
-	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
-
-	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
-	vec3 tmp = N0 - u_bg_color;
+	vec3 tmp = color.xyz - u_bg_color;
 	tmp = tmp * tmp;
 	if (tmp.x + tmp.y + tmp.z < 0.0001){
 		discard;
 	}
 
-	for (int i=0; i<u_light_count; i++)
-	{
-		// diffuse
-		if (u_light_types[i] == LT_DIRECTIONAL) {
-			L = u_light_directions[i];
-			L = normalize(L);
-
-			float shadow_factor = 1.0;
-			if (u_light_cast_shadowss[i] == 1)
-				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
-
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
-		}
-
-		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
-		diffuse_term = N_dot_L * light_intensity;
-
-		// specular
-		R = reflect(-L, N); // minus because of reflect function first argument is incident
-		R_dot_V = clamp(dot(R, V), 0.0, 1.0);
-
-		specular_term = pow(R_dot_V, u_shininess) * light_intensity;
-
-		// add diffuse and specular terms
-		final_light += diffuse_term;
-		final_light += specular_term;
-	}
-
-	illumination = vec4(final_light, 1.0);
+	FragColor = vec4(color, 1.0);
 }

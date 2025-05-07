@@ -221,7 +221,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 			// Create the model from the light data.
 			model.setTranslation(pos.x, pos.y, pos.z);
-			model.setScale(md, md, md);
+			model.scale(md, md, md);
 
 			// Upload the necessary uniforms.
 			shader->setUniform("u_light_id", i);

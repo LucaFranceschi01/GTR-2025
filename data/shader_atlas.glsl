@@ -8,7 +8,6 @@ compute test.cs
 singlepass basic.vs single_phong.fs
 multipass basic.vs multi_phong.fs
 plain basic.vs plain.fs
-skybox_deferred basic.vs skybox_deferred.fs
 texture_deferred basic.vs texture_deferred.fs
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 lighting_phong_deferred quad.vs lighting_phong_deferred.fs
@@ -643,25 +642,6 @@ void main ()
 		discard;
 
 	FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-}
-
-\skybox_deferred.fs
-
-#version 330 core
-
-in vec3 v_position;
-in vec3 v_world_position;
-
-uniform samplerCube u_texture;
-uniform vec3 u_camera_position;
-
-layout(location = 0) out vec4 gbuffer_albedo;
-
-void main()
-{
-	vec3 E = v_world_position - u_camera_position;
-	vec4 color = texture( u_texture, E );
-	gbuffer_albedo = color;
 }
 
 \texture_deferred.fs

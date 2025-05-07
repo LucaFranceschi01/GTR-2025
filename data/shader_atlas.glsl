@@ -474,6 +474,8 @@ void main()
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
 			}
+		} else {
+			continue;
 		}
 
 		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
@@ -594,6 +596,8 @@ void main()
 			light_intensity /= (cos(u_light_cone.x) - cos(u_light_cone.y));
 			light_intensity *= shadow_factor;
 		}
+	} else {
+		discard;
 	}
 
 	N_dot_L = clamp(dot(N, L), 0.0, 1.0);
@@ -804,6 +808,8 @@ void main()
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
 			}
+		} else {
+			continue;
 		}
 
 		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
@@ -907,6 +913,8 @@ void main()
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
 			}
+		} else {
+			continue;
 		}
 
 		N_dot_L = clamp(dot(N, L), 0.0, 1.0);
@@ -1091,6 +1099,8 @@ void main()
 			light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 			light_intensity *= shadow_factor;
 		}
+	} else {
+		discard;
 	}
 
 	N_dot_L = clamp(dot(N, L), 0.0, 1.0);

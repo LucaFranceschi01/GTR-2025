@@ -50,6 +50,8 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		GL_RGBA,
 		GL_UNSIGNED_BYTE,
 		true);
+
+	sphere.createSphere(1.0);
 }
 
 void Renderer::setupScene()
@@ -162,6 +164,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		quad->render(GL_TRIANGLES);
 
 		shader->disable();
+
+		// ================================================= LIGHT PASSES
 		
 		// Set the OpenGL config
 		glDepthFunc(GL_GREATER);
@@ -169,8 +173,6 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		glBlendFunc(GL_ONE, GL_ONE);
 		glFrontFace(GL_CW);
 		glDisable(GL_BLEND);
-
-		// ================================================= LIGHT PASSES
 		
 		shader = GFX::Shader::Get("lighting_phong_deferred_volume_lights");
 
@@ -204,31 +206,30 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		shader->setUniform("u_bg_color", scene->background_color);
 
 		vec3 pos;
+		float md;
 		mat4 model;
-
-		// Create the model from the light data.
-		sphere.createSphere(1.0); // esto fuera
 		
 		for (int i = 0; i < light_info.l_count; i++) {
 			LightEntity* light = light_info.entities[i];
 
 			if (light->light_type == eLightType::DIRECTIONAL) continue;
 
+			// Retrieve light data
+			pos = light_info.positions[i];
+			md = light->max_distance;
+
+			// Create the model from the light data.
+			model.setTranslation(pos.x, pos.y, pos.z);
+			model.setScale(md, md, md);
+
 			// Upload the necessary uniforms.
 			shader->setUniform("u_light_id", i);
-
-
-			pos = light_info.positions[i];
-			model.setTranslation(pos.x, pos.y, pos.z);
-			// set scale
-
-
 			shader->setUniform("u_model", model);
 
 			sphere.render(GL_TRIANGLES);
 		}
 
-		shader->disable();
+		shader->disable();	
 	}
 
 	// Return the OpenGL config to what it was
@@ -384,8 +385,8 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 
 		if (light_volumes_on) {
 			fillLightingFBO(scene, camera);
+			
 			displayScene(scene, camera);
-			//lighting_fbo.color_textures[0]->toViewport();
 		}
 		else {
 			displaySceneSinglepass(scene, camera);

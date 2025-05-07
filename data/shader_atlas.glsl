@@ -1068,11 +1068,11 @@ void main()
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
-	vec3 tmp = N0 - u_bg_color;
-	tmp = tmp * tmp;
-	if (tmp.x + tmp.y + tmp.z < 0.0001){
-		discard;
-	}
+	//vec3 tmp = N0 - u_bg_color;
+	//tmp = tmp * tmp;
+	//if (tmp.x + tmp.y + tmp.z < 0.0001){
+	//	discard;
+	//}
 
 	// first pass, we do ambient and directional lights
 	int i = u_light_id;

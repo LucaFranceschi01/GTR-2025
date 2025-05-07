@@ -133,7 +133,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		GFX::Mesh* quad = GFX::Mesh::getQuad();
 
 		GFX::Shader* shader = GFX::Shader::Get("lighting_phong_deferred_firstpass");
-
+		
 		if (!shader)
 			return;
 		shader->enable();
@@ -164,7 +164,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		quad->render(GL_TRIANGLES);
 
 		shader->disable();
-
+		
 		// ================================================= LIGHT PASSES
 		
 		// Set the OpenGL config
@@ -172,7 +172,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		glDepthMask(GL_FALSE);
 		glBlendFunc(GL_ONE, GL_ONE);
 		glFrontFace(GL_CW);
-		glDisable(GL_BLEND);
+		glEnable(GL_BLEND);
 		
 		shader = GFX::Shader::Get("lighting_phong_deferred_volume_lights");
 
@@ -196,7 +196,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 			)
 		);
 
-		shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+		shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+		shader->setUniform("u_camera_position", camera->eye);
 		shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 		shader->setUniform("u_shininess", shininess);
 

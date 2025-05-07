@@ -26,6 +26,14 @@ namespace SCN {
 		SCN::Material* material;
 	};
 
+	enum e_PipelineMode {
+		SINGLEPASS_PHONG,
+		MULTIPASS_PHONG,
+		DEFERRED_SINGLEPASS_PHONG,
+		DEFERRED_MULTIPASS_PHONG,
+		COUNT
+	};
+
 	// This class is in charge of rendering anything in our system.
 	// Separating the render from anything else makes the code cleaner
 	class Renderer
@@ -33,9 +41,9 @@ namespace SCN {
 	public:
 		bool render_wireframe;
 		bool render_boundaries;
-		bool singlepass_on = true;
 		bool front_face_culling_on = true;
-		bool deferred_on = true;
+		
+		e_PipelineMode pipeline_mode = DEFERRED_MULTIPASS_PHONG;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -49,7 +57,7 @@ namespace SCN {
 		
 		SCN::LightUniforms light_info;
 
-		GFX::FBO gbuffer_fbo;
+		GFX::FBO gbuffer_fbo, lighting_fbo;
 
 		float shininess = 30.f;
 
@@ -63,12 +71,16 @@ namespace SCN {
 
 		//renders several elements of the scene
 		void renderScene(SCN::Scene* scene, Camera* camera);
+		void renderSceneDeferred(SCN::Scene* scene, Camera* camera);
+		void renderSceneForward(SCN::Scene* scene, Camera* camera);
 
 		//render the skybox
 		void renderSkybox(GFX::Texture* cubemap);
 
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material, bool gbuffer_pass = false);
+		void renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+		void renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
+		void renderMeshWithMaterialForward(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material);
 
 		void showUI();
 		
@@ -80,5 +92,8 @@ namespace SCN {
 
 		// Display the scene through deferred render using the G-Buffer information
 		void displayScene(SCN::Scene* scene, Camera* camera);
+		void displaySceneSinglepass(SCN::Scene* scene, Camera* camera);
+
+		void fillLightingFBO(SCN::Scene* scene, Camera* camera);
 	};
 };

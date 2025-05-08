@@ -14,6 +14,7 @@ lighting_phong_deferred quad.vs lighting_phong_deferred.fs
 lighting_phong_deferred_firstpass quad.vs lighting_phong_deferred_firstpass.fs
 lighting_phong_deferred_volume_lights basic.vs lighting_phong_deferred_volume_lights.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
+pbr_singlepass basic.vs pbr_singlepass.fs
 
 \test.cs
 #version 430 core
@@ -376,6 +377,48 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 	return 1.0;
 }
 
+\pbr_functions
+
+const float PI = 3.14159265359;
+
+// F0 approximation by interpolating between a dark grey and the base color
+// a metal will have a brighter F0, when compared to plastic
+// vec3 F0 = mix(vec3(0.04), albedo, metalness);
+// vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness);
+
+vec3 fresnel_schlick(vec3 V, vec3 H, vec3 f0) {
+	return f0 + (vec3(1.0) - f0) * pow(1 - clamp(dot(H, V), 0.0, 1.0), 5);
+}
+
+float normal_dist_GGX(vec3 N, vec3 H, float alpha) {
+	float alpha2 = pow(alpha, 2);
+	return alpha2 / (PI * pow(pow(clamp(dot(N, H), 0.0, 1.0), 2) * (alpha2 - 1) + 1, 2));
+}
+
+float g1_schlick_GGX(vec3 v, vec3 N, float k) {
+	float N_dot_v = clamp(dot(N, v), 0.0, 1.0);
+	return N_dot_v / (N_dot_v * (1 - k) + k);
+}
+
+float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
+	float k = alpha / 2.0;
+	return g1_schlick_GGX(L, N, k) * g1_schlick_GGX(V, N, k);
+}
+
+vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float metalness, float roughness) {
+	float alpha = pow(clamp(roughness, 0.0, 1.0), 2); // just in case clamp
+	vec3 H = normalize(normalize(V) + normalize(L));
+	
+	vec3 F0 = mix(vec3(0.04), albedo, metalness);
+	vec3 F = fresnel_schlick(V, H, F0);
+	float D = normal_dist_GGX(N, H, alpha);
+	float G = geometry_smith_GGX(L, V, N, alpha);
+
+	vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+
+	return (kd / PI) + (F * D * G) / (4 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
+}
+
 \single_phong.fs
 
 #version 330 core
@@ -670,6 +713,7 @@ uniform float u_alpha_cutoff;
 uniform int u_maps[MAX_MAPS];
 uniform sampler2D u_texture;
 uniform sampler2D u_normal_map;
+uniform sampler2D u_texture_metallic_roughness;
 // end maps ===================================================================
 
 layout(location = 0) out vec4 gbuffer_albedo;
@@ -697,8 +741,13 @@ void main()
 	//	N = perturbNormal(N, -V, uv, texture_normal);
 	//}
 
-	gbuffer_albedo = vec4(color.xyz, color.a);
-	gbuffer_normal_mat = vec4(N*0.5+0.5, 1.0);
+	vec3 bao_met_rou = vec3(1.0);
+	if (u_maps[ALBEDO] != 0){
+		bao_met_rou *= texture( u_texture_metallic_roughness, v_uv ).rgb;
+	}
+
+	gbuffer_albedo = vec4(color.xyz, bao_met_rou.b);
+	gbuffer_normal_mat = vec4(N*0.5+0.5, bao_met_rou.g);
 }
 
 \singlepass_phong_deferred.fs
@@ -1128,4 +1177,117 @@ void main()
 	}
 
 	FragColor = vec4(color, 1.0);
+}
+
+\pbr_singlepass.fs
+
+#version 330 core
+
+#include utils
+#include constants
+#include lights
+#include shadows
+#include pbr_functions
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform float u_time;
+uniform vec3 u_camera_position;
+
+// start material-related inputs ==============================================
+uniform vec4 u_color;
+uniform float u_alpha_cutoff;
+
+uniform float u_shininess;
+// end material-related inputs ================================================
+
+
+// start maps =================================================================
+uniform int u_maps[MAX_MAPS];
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_map;
+uniform sampler2D u_texture_metallic_roughness;
+// end maps ===================================================================
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color; // should always be 1 if not changed somehow
+
+	if (u_maps[ALBEDO] != 0) {
+		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
+	}
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	// add ambient term
+	vec3 final_light = u_ambient_light;
+
+	vec3 diffuse_term, specular_term, light_intensity, L, R;
+	float N_dot_L, R_dot_V, dist, numerator;
+	
+	vec3 N = normalize(v_normal);
+	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+
+	//if (u_maps[NORMALMAP] != 0) {
+	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
+	//	texture_normal = (texture_normal * 2.0) - 1.0;
+	//	texture_normal = normalize(texture_normal);
+	//	N = perturbNormal(N, -V, uv, texture_normal);
+	//}
+
+	vec3 bao_met_rou = vec3(1.0);
+	if (u_maps[ALBEDO] != 0){
+		bao_met_rou *= texture( u_texture_metallic_roughness, v_uv ).rgb;
+	}
+
+	for (int i=0; i<u_light_count; i++)
+	{
+		// diffuse
+		if (u_light_types[i] == LT_DIRECTIONAL) {
+			L = u_light_directions[i];
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+
+			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+		} else if (u_light_types[i] == LT_POINT) {
+			L = u_light_positions[i] - v_world_position;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		} else if (u_light_types[i] == LT_SPOT) {
+			L = u_light_positions[i] - v_world_position;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+
+			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
+			light_intensity = vec3(0.0);
+			if (numerator >= 0) {
+				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity *= numerator;
+				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
+				light_intensity *= shadow_factor;
+			}
+		} else {
+			continue;
+		}
+
+		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_met_rou.g, bao_met_rou.b);
+	}
+
+	FragColor = vec4(final_light * color.rgb, color.a);
 }

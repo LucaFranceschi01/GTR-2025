@@ -76,9 +76,9 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 	if (!node->mesh) return;
 
 	// start frustum culling
-	bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
+	//bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
 
-	if (!in_frustum) return;
+	//if (!in_frustum) return;
 	// end frustum culling
 
 	// since we will draw it for sure we create the renderable
@@ -169,6 +169,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	// Set the OpenGL config
 	glDepthFunc(GL_GREATER);
 	glDepthMask(GL_FALSE);
+	glEnable(GL_DEPTH_TEST);
 	glBlendFunc(GL_ONE, GL_ONE);
 	glFrontFace(GL_CW);
 	glEnable(GL_BLEND);
@@ -189,11 +190,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
 	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
 
-	shader->setUniform("u_res_inv",
-		vec2(1.0f / CORE::BaseApplication::instance->window_width,
-			1.0f / CORE::BaseApplication::instance->window_height
-		)
-	);
+	shader->setUniform("u_res_inv", vec2(1.f / CORE::getWindowSize().x, 1.f / CORE::getWindowSize().y));
 
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);

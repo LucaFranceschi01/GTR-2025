@@ -381,23 +381,18 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 
 const float PI = 3.14159265359;
 
-// F0 approximation by interpolating between a dark grey and the base color
-// a metal will have a brighter F0, when compared to plastic
-// vec3 F0 = mix(vec3(0.04), albedo, metalness);
-// vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness);
-
 vec3 fresnel_schlick(vec3 V, vec3 H, vec3 f0) {
-	return f0 + (vec3(1.0) - f0) * pow(1 - clamp(dot(H, V), 0.0, 1.0), 5);
+	return f0 + (vec3(1.0) - f0) * pow(1 - clamp(dot(H, V), 0.0, 1.0), 5.0);
 }
 
 float normal_dist_GGX(vec3 N, vec3 H, float alpha) {
-	float alpha2 = pow(alpha, 2);
-	return alpha2 / (PI * pow(pow(clamp(dot(N, H), 0.0, 1.0), 2) * (alpha2 - 1) + 1, 2));
+	float alpha2 = pow(alpha, 2.0);
+	return alpha2 / (PI * pow(pow(clamp(dot(N, H), 0.0, 1.0), 2.0) * (alpha2 - 1.0) + 1.0, 2.0));
 }
 
 float g1_schlick_GGX(vec3 v, vec3 N, float k) {
 	float N_dot_v = clamp(dot(N, v), 0.0, 1.0);
-	return N_dot_v / (N_dot_v * (1 - k) + k);
+	return N_dot_v / (N_dot_v * (1.0 - k) + k + 0.0001); // avoid division by 0
 }
 
 float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
@@ -406,7 +401,7 @@ float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
 }
 
 vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float metalness, float roughness) {
-	float alpha = pow(clamp(roughness, 0.0, 1.0), 2); // just in case clamp
+	float alpha = pow(clamp(roughness, 0.0, 1.0), 2.0); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
 	vec3 F0 = mix(vec3(0.04), albedo, metalness);
@@ -414,9 +409,10 @@ vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float metaln
 	float D = normal_dist_GGX(N, H, alpha);
 	float G = geometry_smith_GGX(L, V, N, alpha);
 
-	vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	//vec3 kd = mix(albedo - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	vec3 kd = albedo;
 
-	return (kd / PI) + (F * D * G) / (4 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
+	return (kd / PI) + (F * D * G) / (4.0 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
 }
 
 \single_phong.fs
@@ -475,12 +471,12 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	}
 
 	for (int i=0; i<u_light_count; i++)
 	{
@@ -490,8 +486,8 @@ void main()
 			L = normalize(L);
 
 			float shadow_factor = 1.0;
-			if (u_light_cast_shadowss[i] == 1)
-				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+			//if (u_light_cast_shadowss[i] == 1)
+			//	shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
 			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
@@ -505,8 +501,8 @@ void main()
 			L = normalize(L);
 
 			float shadow_factor = 1.0;
-			if (u_light_cast_shadowss[i] == 1)
-				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+			//if (u_light_cast_shadowss[i] == 1)
+			//	shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
@@ -534,7 +530,7 @@ void main()
 		final_light += specular_term;
 	}
 
-	FragColor = vec4(final_light * color.xyz, color.a);
+	FragColor = vec4(N, color.a);
 }
 
 \multi_phong.fs
@@ -734,12 +730,12 @@ void main()
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, -V, uv, texture_normal);
+	if (u_maps[NORMALMAP] != 0) {
+	}
 
 	vec3 bao_met_rou = vec3(1.0);
 	if (u_maps[ALBEDO] != 0){
@@ -747,7 +743,7 @@ void main()
 	}
 
 	gbuffer_albedo = vec4(color.xyz, bao_met_rou.b);
-	gbuffer_normal_mat = vec4(N*0.5+0.5, bao_met_rou.g);
+	gbuffer_normal_mat = vec4(N*0.5+0.5, 1.0);
 }
 
 \singlepass_phong_deferred.fs
@@ -1110,7 +1106,8 @@ void main()
 		L = u_light_positions[i] - world_pos;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
-		light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		//light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		light_intensity = u_light_colors[i] * u_light_intensities[i]; // light intensity reduced by distance
 	} else if (u_light_types[i] == LT_SPOT) {
 		L = u_light_positions[i] - world_pos;
 		dist = length(L); // used in light intensity
@@ -1143,9 +1140,9 @@ void main()
 
 	// add diffuse and specular terms
 	final_light += diffuse_term;
-	final_light += specular_term;
+	//final_light += specular_term;
 
-	illumination = vec4(final_light * color, 1.0);
+	illumination = vec4(world_pos, 1.0);
 }
 
 \deferred_to_viewport.fs
@@ -1256,8 +1253,8 @@ void main()
 			L = normalize(L);
 
 			float shadow_factor = 1.0;
-			if (u_light_cast_shadowss[i] == 1)
-				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+			//if (u_light_cast_shadowss[i] == 1)
+			//	shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
 			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
@@ -1271,8 +1268,8 @@ void main()
 			L = normalize(L);
 
 			float shadow_factor = 1.0;
-			if (u_light_cast_shadowss[i] == 1)
-				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
+			//if (u_light_cast_shadowss[i] == 1)
+			//	shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
@@ -1286,7 +1283,8 @@ void main()
 			continue;
 		}
 
-		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_met_rou.g, bao_met_rou.b);
+		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_met_rou.b, bao_met_rou.g);
+		//final_light = cook_torrance_reflectance(V, L, N, color.rgb, bao_met_rou.b, bao_met_rou.g);
 	}
 
 	FragColor = vec4(final_light * color.rgb, color.a);

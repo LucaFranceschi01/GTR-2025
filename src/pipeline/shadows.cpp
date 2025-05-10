@@ -117,7 +117,7 @@ void SCN::Shadows::renderPlain(Camera* light_camera, const Matrix44 model, GFX::
 	assert(glGetError() == GL_NO_ERROR);
 
 	//define locals to simplify coding
-	GFX::Shader* shader = GFX::Shader::Get("plain");
+	GFX::Shader* shader = GFX::Shader::Get("shadows_plain");
 
 	//glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
@@ -186,7 +186,7 @@ void SCN::Shadows::bindShadowAtlasPositions(GFX::Shader* shader, std::vector<int
 }
 
 void SCN::Shadows::showUI(Shadows& shadow_info)
-{
+{	
 	if (ImGui::TreeNode("Shadowmaps")) {
 		ImGui::Text("ShadowMap columns");
 		ImGui::SliderInt("##shadowmapcolumns", &shadow_info.shadow_atlas_dims.x, 1, 5);

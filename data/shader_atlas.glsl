@@ -257,12 +257,8 @@ mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
 	return mat3( T * invmax, B * invmax, N );
 }
 
-// assume N, the interpolated vertex normal and
-// WP the world position
-//vec3 normal_pixel = texture2D( normalmap, uv ) .xyz;
 vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
 {
-	normal_pixel = normal_pixel * 255./127. - 128./127.;
 	mat3 TBN = cotangent_frame(N, WP, uv);
 	return normalize(TBN * normal_pixel);
 }
@@ -274,7 +270,7 @@ const int NO_LIGHT = 		0;
 const int LT_POINT = 		1;
 const int LT_SPOT =			2;
 const int LT_DIRECTIONAL = 	3;
-const uint MAX_LIGHTS = 5;
+const int MAX_LIGHTS = 5;
 
 // texture types
 const int ALBEDO				= 0;
@@ -283,7 +279,7 @@ const int OPACITY				= 2;
 const int METALLIC_ROUGHNESS	= 3;
 const int OCCLUSION				= 4;
 const int NORMALMAP				= 5;
-const uint MAX_MAPS = 6;
+const int MAX_MAPS = 6;
 
 \lights
 
@@ -366,7 +362,7 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 	float real_depth = proj_pos_uv.z;
 
 	// take into account the atlas offset
-	vec2 shadow_atlas_offset = vec2(mod(u_atlas_indices[i], u_shadow_atlas_dims.x), floor(u_atlas_indices[i] / u_shadow_atlas_dims.x));
+	vec2 shadow_atlas_offset = vec2(mod(u_atlas_indices[i], u_shadow_atlas_dims.x), u_atlas_indices[i] / u_shadow_atlas_dims.x);
 	vec2 uv_in_atlas = (proj_pos_uv.xy + shadow_atlas_offset) / vec2(u_shadow_atlas_dims);
 
 	// read depth from depth buffer in uv space
@@ -381,23 +377,18 @@ float compute_shadow_factor_singlepass(int i, vec3 world_position)
 
 const float PI = 3.14159265359;
 
-// F0 approximation by interpolating between a dark grey and the base color
-// a metal will have a brighter F0, when compared to plastic
-// vec3 F0 = mix(vec3(0.04), albedo, metalness);
-// vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness);
-
 vec3 fresnel_schlick(vec3 V, vec3 H, vec3 f0) {
-	return f0 + (vec3(1.0) - f0) * pow(1 - clamp(dot(H, V), 0.0, 1.0), 5);
+	return f0 + (vec3(1.0) - f0) * pow(1 - clamp(dot(H, V), 0.0, 1.0), 5.0);
 }
 
 float normal_dist_GGX(vec3 N, vec3 H, float alpha) {
 	float alpha2 = pow(alpha, 2);
-	return alpha2 / (PI * pow(pow(clamp(dot(N, H), 0.0, 1.0), 2) * (alpha2 - 1) + 1, 2));
+	return alpha2 / (PI * pow(pow(clamp(dot(N, H), 0.0, 1.0), 2) * (alpha2 - 1.0) + 1.0, 2));
 }
 
 float g1_schlick_GGX(vec3 v, vec3 N, float k) {
-	float N_dot_v = clamp(dot(N, v), 0.0, 1.0);
-	return N_dot_v / (N_dot_v * (1 - k) + k);
+	float N_dot_v = clamp(dot(N, v), 0.0001, 1.0);
+	return N_dot_v / (N_dot_v * (1.0 - k) + k);
 }
 
 float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
@@ -405,7 +396,7 @@ float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
 	return g1_schlick_GGX(L, N, k) * g1_schlick_GGX(V, N, k);
 }
 
-vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float metalness, float roughness) {
+vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughness, float metalness) {
 	float alpha = pow(clamp(roughness, 0.0, 1.0), 2); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
@@ -414,9 +405,10 @@ vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float metaln
 	float D = normal_dist_GGX(N, H, alpha);
 	float G = geometry_smith_GGX(L, V, N, alpha);
 
-	vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	//vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	vec3 kd = albedo;
 
-	return (kd / PI) + (F * D * G) / (4 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
+	return (kd / PI) + (F * D * G) / (4.0 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
 }
 
 \single_phong.fs
@@ -473,14 +465,14 @@ void main()
 	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - v_world_position);
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, v_world_position, uv, texture_normal);
+	}
 
 	for (int i=0; i<u_light_count; i++)
 	{
@@ -591,14 +583,14 @@ void main()
 	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - v_world_position);
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, v_world_position, uv, texture_normal);
+	}
 
 	// diffuse
 	if (u_light_type == LT_DIRECTIONAL)
@@ -732,22 +724,22 @@ void main()
 		discard;
 	
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - v_world_position);
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
-
-	vec3 bao_met_rou = vec3(1.0);
-	if (u_maps[ALBEDO] != 0){
-		bao_met_rou *= texture( u_texture_metallic_roughness, v_uv ).rgb;
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, v_world_position, uv, texture_normal);
 	}
 
-	gbuffer_albedo = vec4(color.xyz, bao_met_rou.b);
-	gbuffer_normal_mat = vec4(N*0.5+0.5, bao_met_rou.g);
+	vec3 bao_rou_met = vec3(1.0);
+	if (u_maps[ALBEDO] != 0){
+		bao_rou_met *= texture( u_texture_metallic_roughness, v_uv ).rgb;
+	}
+
+	gbuffer_albedo = vec4(color.xyz, bao_rou_met.g);
+	gbuffer_normal_mat = vec4(N*0.5+0.5, bao_rou_met.b);
 }
 
 \singlepass_phong_deferred.fs
@@ -793,7 +785,7 @@ void main()
 	
 	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
 	vec3 N = N0 * 2.0 - 1.0;
-	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - world_pos);
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
@@ -898,7 +890,7 @@ void main()
 	
 	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
 	vec3 N = N0 * 2.0 - 1.0;
-	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - world_pos);
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
@@ -1006,7 +998,7 @@ void main()
 	
 	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
 	vec3 N = N0 * 2.0 - 1.0;
-	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - world_pos);
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
@@ -1093,7 +1085,7 @@ void main()
 	
 	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
 	vec3 N = N0 * 2.0 - 1.0;
-	vec3 V = normalize(u_camera_position - world_pos); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - world_pos);
 
 	// if the normal is equal to the background color --> skip shading (for skybox)
 	// calculate the squared error, since it seems that comparisons are not performed properly
@@ -1234,18 +1226,18 @@ void main()
 	float N_dot_L, R_dot_V, dist, numerator;
 	
 	vec3 N = normalize(v_normal);
-	vec3 V = normalize(u_camera_position - v_world_position); // -V is vertex_world_position
+	vec3 V = normalize(u_camera_position - v_world_position);
 
-	//if (u_maps[NORMALMAP] != 0) {
-	//	vec3 texture_normal = texture(u_normal_map, uv).xyz;
-	//	texture_normal = (texture_normal * 2.0) - 1.0;
-	//	texture_normal = normalize(texture_normal);
-	//	N = perturbNormal(N, -V, uv, texture_normal);
-	//}
+	if (u_maps[NORMALMAP] != 0) {
+		vec3 texture_normal = texture(u_normal_map, uv).xyz;
+		texture_normal = (texture_normal * 2.0) - 1.0;
+		texture_normal = normalize(texture_normal);
+		N = perturbNormal(N, v_world_position, uv, texture_normal);
+	}
 
-	vec3 bao_met_rou = vec3(1.0);
-	if (u_maps[ALBEDO] != 0){
-		bao_met_rou *= texture( u_texture_metallic_roughness, v_uv ).rgb;
+	vec3 bao_rou_met = vec3(1.0);
+	if (u_maps[METALLIC_ROUGHNESS] != 0){
+		bao_rou_met *= texture( u_texture_metallic_roughness, v_uv ).rgb;
 	}
 
 	for (int i=0; i<u_light_count; i++)
@@ -1286,7 +1278,7 @@ void main()
 			continue;
 		}
 
-		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_met_rou.g, bao_met_rou.b);
+		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_rou_met.g, bao_rou_met.b);
 	}
 
 	FragColor = vec4(final_light * color.rgb, color.a);

@@ -44,6 +44,7 @@ namespace SCN {
 		bool render_wireframe;
 		bool render_boundaries;
 		bool front_face_culling_on = true;
+		bool frustum_culling = false;
 		
 		e_PipelineMode pipeline_mode = PBR_SINGLEPASS;
 

@@ -76,9 +76,11 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 	if (!node->mesh) return;
 
 	// start frustum culling
-	bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
+	if (frustum_culling) {
+		bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
 
-	if (!in_frustum) return;
+		if (!in_frustum) return;
+	}
 	// end frustum culling
 
 	// since we will draw it for sure we create the renderable
@@ -605,6 +607,7 @@ void Renderer::showUI()
 	//add here your stuff
 	//...
 	ImGui::Checkbox("Front Face Culling ON", &front_face_culling_on);
+	ImGui::Checkbox("Frustum Culling ON", &frustum_culling);
 
 	// for shadow atlas
 	Shadows::showUI(shadow_info);

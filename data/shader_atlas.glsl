@@ -16,12 +16,12 @@ singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 // deferred shaders
 fill_gbuffer basic.vs fill_gbuffer.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
+ssao_compute quad.vs ssao_compute.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
 singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
-
 
 \test.cs
 #version 430 core
@@ -1285,4 +1285,28 @@ void main()
 	}
 
 	FragColor = vec4(final_light * color, 1.0);
+}
+
+\ssao_compute.fs
+
+#version 330 core
+
+const int MAX_SSAO_SAMPLES = 32;
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_depth;
+
+uniform int u_sample_count;
+uniform float u_sample_radius;
+uniform vec3 u_sample_pos[MAX_SSAO_SAMPLES];
+
+uniform vec2 u_res_inv;
+uniform mat4 u_vp_mat;
+uniform mat4 u_inv_vp_mat;
+
+layout(location = 0) out vec3 ssao_fbo;
+
+void main() {
+	
 }

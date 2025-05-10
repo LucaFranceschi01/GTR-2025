@@ -1,0 +1,108 @@
+#include "ssao.h"
+
+#include "camera.h"
+#include "scene.h"
+
+#include "gfx/shader.h"
+#include "gfx/mesh.h"
+
+
+SCN::SSAO::SSAO() {
+	is_active = true;
+	samples = 16;
+	sample_radius = 0.05;
+}
+
+void SCN::SSAO::create_fbo(int width, int height)
+{
+	instance().fbo.create(
+		width,
+		height,
+		1,
+		GL_RGB,
+		GL_UNSIGNED_BYTE,
+		false);
+}
+
+void SCN::SSAO::showUI()
+{
+	ImGui::Checkbox("Screen Space Ambient Occlusion", &instance().is_active);
+	if (instance().is_active) {
+		ImGui::SliderInt("Sample count", &instance().samples, 1, 32);
+		ImGui::SliderFloat("Sample radius", &instance().sample_radius, 0.01, 0.1);
+	}
+}
+
+const std::vector<Vector3f> SCN::SSAO::generateSpherePoints(int num, float radius, bool hemi)
+{
+	assert(num <= MAX_SSAO_SAMPLES);
+	
+	std::vector<Vector3f> points;
+	points.resize(num);
+	for (int i = 0; i < num; i += 1) {
+		Vector3f& p = points[i];
+		float u = random();
+		float v = random();
+		float theta = u * 2.0 * PI;
+		float phi = acos(2.0 * v - 1.0);
+		float r = cbrt(random() * 0.9 + 0.1) * radius;
+		float sinTheta = sin(theta);
+		float cosTheta = cos(theta);
+		float sinPhi = sin(phi);
+		float cosPhi = cos(phi);
+		p.x = r * sinPhi * cosTheta;
+		p.y = r * sinPhi * sinTheta;
+		p.z = r * cosPhi;
+		if (hemi && p.z < 0)
+			p.z *= -1.0;
+	}
+	return points;
+}
+
+void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
+{
+	SSAO& ssao = instance();
+	
+	std::vector<Vector3f> ao_sample_points = generateSpherePoints(ssao.samples);
+
+	gbuffer_fbo.depth_texture->copyTo(ssao.fbo.depth_texture);
+
+	Camera* camera = Camera::current;
+	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader = GFX::Shader::Get("ssao_compute");
+
+	assert(glGetError() == GL_NO_ERROR);
+	//glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	// send AO params
+	shader->setUniform("u_sample_count", ssao.samples);
+	shader->setUniform("u_sample_radius", ssao.sample_radius);
+	shader->setUniform3Array("u_sample_pos", (float*)&ao_sample_points, ssao.samples);
+
+	// send camera matrices
+	//shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+	shader->setUniform("u_vp_mat", camera->projection_matrix);
+	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+
+	// In the CPU
+	ssao.fbo.bind();
+	shader->enable();
+
+	// Send the inverse of the FBO res, for the UVs
+	shader->setUniform("u_res_inv", vec2(
+		1.0f / ssao.fbo.color_textures[0]->width,
+		1.0f / ssao.fbo.color_textures[0]->height)
+	);
+
+	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
+
+	quad->render(GL_TRIANGLES);
+
+	shader->disable();
+	ssao.fbo.unbind();
+}

@@ -76,9 +76,11 @@ void Renderer::parseNodes(SCN::Node* node, Camera* cam)
 	if (!node->mesh) return;
 
 	// start frustum culling
-	bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
+	if (frustum_culling) {
+		bool in_frustum = cam->testBoxInFrustum(node->aabb.center, node->aabb.halfsize); // note: aabb is the bounding box
 
-	if (!in_frustum) return;
+		if (!in_frustum) return;
+	}
 	// end frustum culling
 
 	// since we will draw it for sure we create the renderable
@@ -283,7 +285,7 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->disable();
 }
 
-void SCN::Renderer::displayScene(SCN::Scene* scene, Camera* camera)
+void SCN::Renderer::displayScene(SCN::Scene* scene)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
@@ -391,7 +393,7 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 	if (pipeline_mode == DEFERRED_MULTIPASS_PHONG) {
 		fillLightingFBO(scene, camera);
 
-		displayScene(scene, camera);
+		displayScene(scene);
 	}
 	else {
 		displaySceneSinglepass(scene, camera);
@@ -536,6 +538,9 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 		glDepthFunc(GL_LEQUAL);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	}
+	else if (pipeline_mode == PBR_SINGLEPASS) {
+		shader = GFX::Shader::Get("pbr_singlepass");
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -562,7 +567,7 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 
 	shader->setUniform("u_shininess", shininess);
 
-	if (pipeline_mode == SINGLEPASS_PHONG) {
+	if (pipeline_mode == SINGLEPASS_PHONG || pipeline_mode == PBR_SINGLEPASS) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
 
@@ -597,11 +602,12 @@ void Renderer::showUI()
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::Checkbox("Boundaries", &render_boundaries);
 
-	ImGui::Combo("Pipeline mode", (int*)&pipeline_mode, "SINGLEPASS PHONG\0MULTIPASS PHONG\0DEFERRED SINGLEPASS PHONG\0DEFERRED MULTIPASS PHONG\0", e_PipelineMode::COUNT);
+	ImGui::Combo("Pipeline mode", (int*)&pipeline_mode, "SINGLEPASS PHONG\0MULTIPASS PHONG\0DEFERRED SINGLEPASS PHONG\0DEFERRED MULTIPASS PHONG\0PBR SINGLEPASS\0PBR DEFERRED\0", e_PipelineMode::COUNT);
 
 	//add here your stuff
 	//...
 	ImGui::Checkbox("Front Face Culling ON", &front_face_culling_on);
+	ImGui::Checkbox("Frustum Culling ON", &frustum_culling);
 
 	// for shadow atlas
 	Shadows::showUI(shadow_info);

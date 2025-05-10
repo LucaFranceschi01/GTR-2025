@@ -246,8 +246,14 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader;
 
-	GFX::Shader* shader = GFX::Shader::Get("singlepass_phong_deferred");
+	if (reflectance_model == PHONG) {
+		shader = GFX::Shader::Get("singlepass_phong_deferred");
+	}
+	else {
+		shader = GFX::Shader::Get("singlepass_pbr_deferred");
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -273,7 +279,7 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 
 	shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
-	shader->setUniform("u_shininess", shininess);
+	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
 	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
@@ -516,8 +522,6 @@ void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Me
 
 	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
-
-	shader->setUniform("u_shininess", shininess);
 
 	if (pass_setting == SINGLEPASS) {
 		//do the draw call that renders the mesh into the screen

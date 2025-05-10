@@ -157,7 +157,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -202,7 +202,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -281,7 +281,7 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -451,7 +451,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
 
-	shader->setUniform("u_texture", cubemap, 0);
+	shader->setTexture("u_texture", cubemap, 0);
 
 	sphere.render(GL_TRIANGLES);
 
@@ -520,7 +520,7 @@ void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Me
 	float t = getTime();
 	shader->setUniform("u_time", t);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	if (pass_setting == SINGLEPASS) {
@@ -574,10 +574,10 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 	float t = getTime();
 	shader->setUniform("u_time", t);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
-	shader->setUniform("u_shininess", shininess);
+	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
 	if (pass_setting == SINGLEPASS) {
 		// Upload all uniforms related to lighting

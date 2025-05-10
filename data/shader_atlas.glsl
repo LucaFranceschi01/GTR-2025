@@ -20,6 +20,7 @@ deferred_to_viewport quad.vs deferred_to_viewport.fs
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
+singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
 
 
 \test.cs
@@ -403,7 +404,7 @@ float geometry_smith_GGX(vec3 L, vec3 V, vec3 N, float alpha) {
 }
 
 vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughness, float metalness) {
-	float alpha = pow(clamp(roughness, 0.0, 1.0), 2); // just in case clamp
+	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
 	vec3 F0 = mix(vec3(0.04), albedo, metalness);
@@ -564,7 +565,7 @@ void main()
 	FragColor = vec4(final_light * color.xyz, color.a);
 }
 
-\ multipass_phong_forward.fs
+\multipass_phong_forward.fs
 
 #version 330 core
 
@@ -740,7 +741,7 @@ void main()
 	}
 
 	vec3 bao_rou_met = vec3(1.0);
-	if (u_maps[ALBEDO] != 0){
+	if (u_maps[METALLIC_ROUGHNESS] != 0){
 		bao_rou_met *= texture( u_texture_metallic_roughness, v_uv ).rgb;
 	}
 
@@ -1094,8 +1095,6 @@ uniform vec3 u_camera_position;
 // start material-related inputs ==============================================
 uniform vec4 u_color;
 uniform float u_alpha_cutoff;
-
-uniform float u_shininess;
 // end material-related inputs ================================================
 
 
@@ -1123,8 +1122,8 @@ void main()
 	// add ambient term
 	vec3 final_light = u_ambient_light;
 
-	vec3 diffuse_term, specular_term, light_intensity, L, R;
-	float N_dot_L, R_dot_V, dist, numerator;
+	vec3 light_intensity, L;
+	float dist, numerator;
 	
 	vec3 N = normalize(v_normal);
 	vec3 V = normalize(u_camera_position - v_world_position);
@@ -1183,4 +1182,107 @@ void main()
 	}
 
 	FragColor = vec4(final_light * color.rgb, color.a);
+}
+
+\singlepass_pbr_deferred.fs
+
+#version 330 core
+
+#include constants
+#include lights
+#include shadows
+#include pbr_functions
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_color;
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_inv_vp_mat;
+uniform vec3 u_camera_position;
+uniform vec3 u_bg_color;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+
+	vec4 gbuffer_fbo1 = texture(u_gbuffer_color, uv);
+
+	vec3 color = gbuffer_fbo1.rgb;
+	float roughness = gbuffer_fbo1.a;
+	
+	vec3 final_light = u_ambient_light;
+
+	vec3 light_intensity, L;
+	float dist, numerator;
+	
+	vec4 gbuffer_fbo2 = texture(u_gbuffer_normal, uv);
+	float metalness = gbuffer_fbo2.a;
+
+	vec3 N0 = gbuffer_fbo2.rgb;
+	vec3 N = N0 * 2.0 - 1.0;
+	vec3 V = normalize(u_camera_position - world_pos);
+
+	// if the normal is equal to the background color --> skip shading (for skybox)
+	// calculate the squared error, since it seems that comparisons are not performed properly
+	vec3 tmp = N0 - u_bg_color;
+	tmp = tmp * tmp;
+	if (tmp.x + tmp.y + tmp.z < 0.0001){
+		discard;
+	}
+
+	for (int i=0; i<u_light_count; i++)
+	{
+		// diffuse
+		if (u_light_types[i] == LT_DIRECTIONAL) {
+			L = u_light_directions[i];
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
+
+			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+		} else if (u_light_types[i] == LT_POINT) {
+			L = u_light_positions[i] - world_pos;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		} else if (u_light_types[i] == LT_SPOT) {
+			L = u_light_positions[i] - world_pos;
+			dist = length(L); // used in light intensity
+			L = normalize(L);
+
+			float shadow_factor = 1.0;
+			if (u_light_cast_shadowss[i] == 1)
+				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
+
+			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
+			light_intensity = vec3(0.0);
+			if (numerator >= 0) {
+				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity *= numerator;
+				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
+				light_intensity *= shadow_factor;
+			}
+		} else {
+			continue;
+		}
+
+		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
+	}
+
+	FragColor = vec4(final_light * color, 1.0);
 }

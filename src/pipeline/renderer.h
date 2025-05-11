@@ -31,6 +31,8 @@ namespace SCN {
 		MULTIPASS_PHONG,
 		DEFERRED_SINGLEPASS_PHONG,
 		DEFERRED_MULTIPASS_PHONG,
+		PBR_SINGLEPASS,
+		PBR_DEFERRED,
 		COUNT
 	};
 
@@ -42,8 +44,9 @@ namespace SCN {
 		bool render_wireframe;
 		bool render_boundaries;
 		bool front_face_culling_on = true;
+		bool frustum_culling = false;
 		
-		e_PipelineMode pipeline_mode = DEFERRED_MULTIPASS_PHONG;
+		e_PipelineMode pipeline_mode = PBR_SINGLEPASS;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -91,7 +94,7 @@ namespace SCN {
 		void fillGBuffer();
 
 		// Display the scene through deferred render using the G-Buffer information
-		void displayScene(SCN::Scene* scene, Camera* camera);
+		void displayScene(SCN::Scene* scene);
 		void displaySceneSinglepass(SCN::Scene* scene, Camera* camera);
 
 		void fillLightingFBO(SCN::Scene* scene, Camera* camera);

@@ -28,7 +28,7 @@ void SCN::SSAO::showUI()
 {
 	ImGui::Checkbox("Screen Space Ambient Occlusion", &instance().is_active);
 	if (instance().is_active) {
-		ImGui::SliderInt("Sample count", &instance().samples, 1, 32);
+		ImGui::SliderInt("Sample count", &instance().samples, 1, MAX_SSAO_SAMPLES);
 		ImGui::SliderFloat("Sample radius", &instance().sample_radius, 0.01, 0.1);
 	}
 }
@@ -86,8 +86,12 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 
 	// send camera matrices
 	//shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
-	shader->setUniform("u_vp_mat", camera->projection_matrix);
-	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
+	Matrix44 inv_proj_mat = camera->projection_matrix;
+	if (!inv_proj_mat.inverse())
+		return;
+
+	shader->setUniform("u_proj_mat", camera->projection_matrix);
+	shader->setUniform("u_inv_proj_mat", inv_proj_mat);
 
 	// In the CPU
 	ssao.fbo.bind();

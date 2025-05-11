@@ -6,7 +6,7 @@
 namespace SCN {
 	class Scene;
 
-	const int MAX_SSAO_SAMPLES = 32;
+	const int MAX_SSAO_SAMPLES = 64;
 
 	class SSAO {
 	private:

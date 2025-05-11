@@ -11,6 +11,7 @@ shadows_plain basic.vs shadows_plain.fs
 // forward shaders
 singlepass_phong_forward basic.vs singlepass_phong_forward.fs
 multipass_phong_forward basic.vs multipass_phong_forward.fs
+
 singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 
 // deferred shaders
@@ -21,6 +22,7 @@ ssao_compute quad.vs ssao_compute.fs
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
+
 singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
 
 \test.cs
@@ -1302,11 +1304,58 @@ uniform float u_sample_radius;
 uniform vec3 u_sample_pos[MAX_SSAO_SAMPLES];
 
 uniform vec2 u_res_inv;
-uniform mat4 u_vp_mat;
-uniform mat4 u_inv_vp_mat;
+uniform mat4 u_proj_mat;
+uniform mat4 u_inv_proj_mat;
 
 layout(location = 0) out vec3 ssao_fbo;
 
 void main() {
-	
+	// On the shader:
+	// Centering the UV coords in the middle
+	// of the pixel
+	vec2 uv = v_uv + 0.5 * u_res_inv;
+
+	// The depth is in range (0, 1)
+	float depth = texture(u_gbuffer_depth, uv).r;
+
+	// Skip if we are in the sky
+	if (depth >= 1.0) {
+		ssao_fbo = vec3(1.0);
+		return;
+	}
+
+	vec4 clip_coords = vec4(uv, depth, 1.0);
+	clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
+
+	// Inverse the clip coordinates (-1, 1) to
+	// view coordinates
+	vec4 view_sample_origin = u_inv_proj_mat * clip_coords;
+	view_sample_origin /= view_sample_origin.w;
+
+	float ao_term = 0.0;
+	for(int i = 0; i < u_sample_count; i++) {
+		vec3 view_sample = u_sample_pos[i];
+		view_sample *= u_sample_radius;
+		view_sample += view_sample_origin.xyz;
+
+		// Project the view space sample
+		// Remember to normalize!
+		// Result is clip space (-1,1)
+		vec4 proj_sample = u_proj_mat * vec4(view_sample, 1.0);
+		proj_sample /= proj_sample.w;
+
+		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5;
+
+		// The depth buffer is in the range (0, 1)
+		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
+
+		// Compare the sample_depth and the
+		// proj_sample.z. If it’s not occluded
+		// increment the ao_term.
+		if (sample_depth < depth) {
+			ao_term += 1.0;
+		}
+	}
+	ao_term /= u_sample_count;
+	ssao_fbo = vec3(ao_term);
 }

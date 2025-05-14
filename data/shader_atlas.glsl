@@ -1297,11 +1297,13 @@ const int MAX_SSAO_SAMPLES = 32;
 
 in vec2 v_uv;
 
+uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
 
 uniform int u_sample_count;
 uniform float u_sample_radius;
 uniform vec3 u_sample_pos[MAX_SSAO_SAMPLES];
+uniform int u_ssao_plus_active;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_proj_mat;
@@ -1324,6 +1326,18 @@ void main() {
 		return;
 	}
 
+	vec3 N = vec3(1.0);
+	if (u_ssao_plus_active != 0) {
+		N *= texture(u_gbuffer_normal, uv).xyz;
+	}
+	N = normalize(N); // just in case
+	//N = N * 2.0 - 1.0;
+
+	vec3 v = vec3(0.0, 1.0, 0.0); // make random !!! check out https://www.aussiedwarf.com/2017/05/09/Random10Bit
+	vec3 T = normalize(v - N * dot(v, N));
+	vec3 B = cross(N, T);
+	mat3 rotmat = mat3(T, B, N);
+
 	vec4 clip_coords = vec4(uv, depth, 1.0);
 	clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
 
@@ -1335,6 +1349,9 @@ void main() {
 	float ao_term = 0.0;
 	for(int i = 0; i < u_sample_count; i++) {
 		vec3 view_sample = u_sample_pos[i];
+		if (u_ssao_plus_active != 0) {
+			view_sample = rotmat * view_sample;
+		}
 		view_sample *= u_sample_radius;
 		view_sample += view_sample_origin.xyz;
 

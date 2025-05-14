@@ -9,6 +9,7 @@
 
 SCN::SSAO::SSAO() {
 	is_active = true;
+	is_ssao_plus_active = true;
 	samples = 16;
 	sample_radius = 0.05;
 
@@ -34,12 +35,24 @@ void SCN::SSAO::showUI()
 	if (ssao.is_active) {
 		ImGui::SliderInt("Sample count", &ssao.samples, 1, MAX_SSAO_SAMPLES);
 		ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.1);
+
+		bool is_ssao_plus_active_prev = ssao.is_ssao_plus_active;
+		ImGui::Checkbox("SSAO+", &ssao.is_ssao_plus_active);
+
+		if (ssao.is_ssao_plus_active != is_ssao_plus_active_prev) {
+			ssao.pointGenerator();
+		}
+
+
 	}
 }
 
 void SCN::SSAO::pointGenerator()
 {
-	ao_sample_points = generateSpherePoints(samples);
+	if (is_ssao_plus_active)
+		ao_sample_points = generateSpherePoints(samples, 1.f, true);
+	else
+		ao_sample_points = generateSpherePoints(samples);
 }
 
 const std::vector<Vector3f> SCN::SSAO::generateSpherePoints(int num, float radius, bool hemi)
@@ -71,7 +84,7 @@ const std::vector<Vector3f> SCN::SSAO::generateSpherePoints(int num, float radiu
 void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 {
 	SSAO& ssao = instance();
-	
+
 	gbuffer_fbo.depth_texture->copyTo(ssao.fbo.depth_texture);
 
 	Camera* camera = Camera::current;
@@ -109,6 +122,11 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 		1.0f / ssao.fbo.color_textures[0]->width,
 		1.0f / ssao.fbo.color_textures[0]->height)
 	);
+
+	shader->setUniform("u_ssao_plus_active", (int)ssao.is_ssao_plus_active);
+	if (ssao.is_ssao_plus_active) {
+		shader->setTexture("u_gbuffer_normal", gbuffer_fbo.color_textures[1], 10);
+	}
 
 	shader->setTexture("u_gbuffer_depth", gbuffer_fbo.depth_texture, 11);
 

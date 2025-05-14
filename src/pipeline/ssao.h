@@ -20,6 +20,7 @@ namespace SCN {
 		}
 
 		bool is_active;
+		bool is_ssao_plus_active;
 		int samples;
 		float sample_radius;
 

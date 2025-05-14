@@ -98,7 +98,6 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 	GFX::Shader* shader = GFX::Shader::Get("ssao_compute");
 
 	assert(glGetError() == GL_NO_ERROR);
-	glClearColor(1.0, 1.0, 1.0, 1.0);
 
 	//no shader? then nothing to render
 	if (!shader)

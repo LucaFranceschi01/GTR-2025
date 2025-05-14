@@ -1293,7 +1293,7 @@ void main()
 
 #version 330 core
 
-const int MAX_SSAO_SAMPLES = 32;
+const int MAX_SSAO_SAMPLES = 100;
 
 in vec2 v_uv;
 
@@ -1308,6 +1308,7 @@ uniform int u_ssao_plus_active;
 uniform vec2 u_res_inv;
 uniform mat4 u_proj_mat;
 uniform mat4 u_inv_proj_mat;
+uniform mat4 u_view_mat;
 
 layout(location = 0) out vec3 ssao_fbo;
 
@@ -1326,17 +1327,20 @@ void main() {
 		return;
 	}
 
-	vec3 N = vec3(1.0);
+	vec3 N0 = vec3(1.0);
+	vec4 N = vec4(1.0);
 	if (u_ssao_plus_active != 0) {
-		N *= texture(u_gbuffer_normal, uv).xyz;
+		N0 *= texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0;
+		N = u_view_mat * vec4(N0, 0.0);
+		N0 = N.xyz;
 	}
-	N = normalize(N); // just in case
+	N0 = normalize(N0); // just in case
 	//N = N * 2.0 - 1.0;
 
 	vec3 v = vec3(0.0, 1.0, 0.0); // make random !!! check out https://www.aussiedwarf.com/2017/05/09/Random10Bit
-	vec3 T = normalize(v - N * dot(v, N));
-	vec3 B = cross(N, T);
-	mat3 rotmat = mat3(T, B, N);
+	vec3 T = normalize(v - N0 * dot(v, N0));
+	vec3 B = cross(N0, T);
+	mat3 rotmat = mat3(T, B, N0);
 
 	vec4 clip_coords = vec4(uv, depth, 1.0);
 	clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
@@ -1369,10 +1373,10 @@ void main() {
 		// Compare the sample_depth and the
 		// proj_sample.z. If it’s not occluded
 		// increment the ao_term.
-		if (sample_depth < depth) {
+		if (sample_depth > (proj_sample.z * 0.5 + 0.5)) {
 			ao_term += 1.0;
 		}
 	}
-	ao_term /= float(u_sample_count);
+	ao_term =ao_term / float(u_sample_count);
 	ssao_fbo = vec3(ao_term);
 }

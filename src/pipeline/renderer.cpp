@@ -157,7 +157,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		)
 	);
 
-	shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+	shader->setUniform("u_camera_position", camera->eye);
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 

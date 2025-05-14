@@ -105,13 +105,13 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 	shader->setUniform3Array("u_sample_pos", (float*)&ssao.ao_sample_points[0], ssao.samples);
 
 	// send camera matrices
-	//shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
 	Matrix44 inv_proj_mat = camera->projection_matrix;
 	if (!inv_proj_mat.inverse())
 		return;
 
 	shader->setUniform("u_proj_mat", camera->projection_matrix);
 	shader->setUniform("u_inv_proj_mat", inv_proj_mat);
+	shader->setUniform("u_view_mat", camera->view_matrix);
 
 	// In the CPU
 	ssao.fbo.bind();

@@ -3,6 +3,8 @@
 #include "gfx/fbo.h"
 #include "core/math.h"
 
+class GFX::Shader;
+
 namespace SCN {
 	class Scene;
 
@@ -30,6 +32,7 @@ namespace SCN {
 
 		static void create_fbo(int width, int height);
 		static void showUI();
+		static void bind(GFX::Shader* shader);
 
 		void pointGenerator();
 		static const std::vector<Vector3f> generateSpherePoints(int num, float radius = 1.f, bool hemi = false);

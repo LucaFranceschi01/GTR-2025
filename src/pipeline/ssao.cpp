@@ -10,8 +10,8 @@
 SCN::SSAO::SSAO() {
 	is_active = true;
 	is_ssao_plus_active = true;
-	samples = 16;
-	sample_radius = 0.05;
+	samples = 64;
+	sample_radius = 0.08;
 
 	pointGenerator();
 }
@@ -33,7 +33,7 @@ void SCN::SSAO::showUI()
 
 	ImGui::Checkbox("Screen Space Ambient Occlusion", &ssao.is_active);
 	if (ssao.is_active) {
-		ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.1);
+		ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.2);
 
 		int sample_count_prev = ssao.samples;
 		bool is_ssao_plus_active_prev = ssao.is_ssao_plus_active;
@@ -45,6 +45,12 @@ void SCN::SSAO::showUI()
 			ssao.pointGenerator();
 		}
 	}
+}
+
+void SCN::SSAO::bind(GFX::Shader* shader)
+{
+	shader->setTexture("u_ssao_texture", SSAO::instance().fbo.color_textures[0], 12);
+	shader->setUniform("u_ssao_active", (int)SSAO::instance().is_active);
 }
 
 void SCN::SSAO::pointGenerator()
@@ -92,7 +98,7 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 	GFX::Shader* shader = GFX::Shader::Get("ssao_compute");
 
 	assert(glGetError() == GL_NO_ERROR);
-	//glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClearColor(1.0, 1.0, 1.0, 1.0);
 
 	//no shader? then nothing to render
 	if (!shader)

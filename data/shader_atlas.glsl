@@ -764,12 +764,14 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform float u_shininess;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 out vec4 FragColor;
 
@@ -788,6 +790,9 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 	
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
@@ -872,12 +877,14 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform float u_shininess;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 layout(location = 0) out vec4 illumination;
 
@@ -896,6 +903,9 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
@@ -1200,11 +1210,13 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 out vec4 FragColor;
 
@@ -1226,6 +1238,9 @@ void main()
 	float roughness = gbuffer_fbo1.a;
 	
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 light_intensity, L;
 	float dist, numerator;

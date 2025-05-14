@@ -165,6 +165,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+	
+	SSAO::bind(shader);
 
 	quad->render(GL_TRIANGLES);
 
@@ -289,6 +291,8 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	SSAO::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
 	

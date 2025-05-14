@@ -27,13 +27,22 @@ namespace SCN {
 	};
 
 	enum e_PipelineMode {
-		SINGLEPASS_PHONG,
-		MULTIPASS_PHONG,
-		DEFERRED_SINGLEPASS_PHONG,
-		DEFERRED_MULTIPASS_PHONG,
-		PBR_SINGLEPASS,
-		PBR_DEFERRED,
-		COUNT
+		FORWARD,
+		DEFERRED,
+		FORWARD_PLUS,
+		COUNT_PIPELINEMODE
+	};
+
+	enum e_PassSetting {
+		SINGLEPASS,
+		MULTIPASS,
+		COUNT_PASSSETTING
+	};
+
+	enum e_ReflectanceModel {
+		PHONG,
+		PBR,
+		COUNT_REFLECTANCEMODEL
 	};
 
 	// This class is in charge of rendering anything in our system.
@@ -46,7 +55,9 @@ namespace SCN {
 		bool front_face_culling_on = true;
 		bool frustum_culling = false;
 		
-		e_PipelineMode pipeline_mode = PBR_SINGLEPASS;
+		e_PipelineMode pipeline_mode = DEFERRED;
+		e_PassSetting pass_setting = SINGLEPASS;
+		e_ReflectanceModel reflectance_model = PBR;
 
 		GFX::Texture* skybox_cubemap;
 
@@ -74,8 +85,8 @@ namespace SCN {
 
 		//renders several elements of the scene
 		void renderScene(SCN::Scene* scene, Camera* camera);
-		void renderSceneDeferred(SCN::Scene* scene, Camera* camera);
 		void renderSceneForward(SCN::Scene* scene, Camera* camera);
+		void renderSceneDeferred(SCN::Scene* scene, Camera* camera);
 
 		//render the skybox
 		void renderSkybox(GFX::Texture* cubemap);

@@ -90,7 +90,7 @@ void Material::bind(GFX::Shader* shader) {
 		shader->setUniform("u_color", color);
 
 		if (texture) {
-			shader->setUniform("u_texture", texture, 0);
+			shader->setTexture("u_texture", texture, 0);
 			flags[SCN::eTextureChannel::ALBEDO] = 1;
 		}
 
@@ -98,7 +98,7 @@ void Material::bind(GFX::Shader* shader) {
 		texture = textures[SCN::eTextureChannel::METALLIC_ROUGHNESS].texture;
 
 		if (texture) {
-			shader->setUniform("u_texture_metallic_roughness", texture, 1);
+			shader->setTexture("u_texture_metallic_roughness", texture, 1);
 			flags[SCN::eTextureChannel::METALLIC_ROUGHNESS] = 1;
 		}
 		// end metallic-roughness texture
@@ -107,7 +107,7 @@ void Material::bind(GFX::Shader* shader) {
 		texture = textures[SCN::eTextureChannel::NORMALMAP].texture;
 
 		if (texture) {
-			shader->setUniform("u_normal_map", texture, 2);
+			shader->setTexture("u_normal_map", texture, 2);
 			flags[SCN::eTextureChannel::NORMALMAP] = 1;
 		}
 		// end normal texture

@@ -133,7 +133,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	// ================================================= FIRST PASS
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
-	GFX::Shader* shader = GFX::Shader::Get("lighting_phong_deferred_firstpass");
+	GFX::Shader* shader = GFX::Shader::Get("multipass_phong_deferred_firstpass");
 		
 	if (!shader)
 		return;
@@ -157,7 +157,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -175,7 +175,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	glFrontFace(GL_CW);
 	glEnable(GL_BLEND);
 		
-	shader = GFX::Shader::Get("lighting_phong_deferred_volume_lights");
+	shader = GFX::Shader::Get("multipass_phong_deferred");
 
 	//no shader? then nothing to render
 	if (!shader)
@@ -202,7 +202,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -246,8 +246,14 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
+	GFX::Shader* shader;
 
-	GFX::Shader* shader = GFX::Shader::Get("singlepass_phong_deferred");
+	if (reflectance_model == PHONG) {
+		shader = GFX::Shader::Get("singlepass_phong_deferred");
+	}
+	else {
+		shader = GFX::Shader::Get("singlepass_pbr_deferred");
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -273,9 +279,9 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 
 	shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
-	shader->setUniform("u_shininess", shininess);
+	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
@@ -380,24 +386,12 @@ void Renderer::renderScene(SCN::Scene* scene, Camera* camera)
 	if (skybox_cubemap)
 		renderSkybox(skybox_cubemap);
 
-	if (pipeline_mode == DEFERRED_MULTIPASS_PHONG || pipeline_mode == DEFERRED_SINGLEPASS_PHONG)
+	if (pipeline_mode == FORWARD)
+		renderSceneForward(scene, camera);
+	else if (pipeline_mode == DEFERRED)
 		renderSceneDeferred(scene, camera);
 	else
-		renderSceneForward(scene, camera);
-}
-
-void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
-{
-	fillGBuffer();
-
-	if (pipeline_mode == DEFERRED_MULTIPASS_PHONG) {
-		fillLightingFBO(scene, camera);
-
-		displayScene(scene);
-	}
-	else {
-		displaySceneSinglepass(scene, camera);
-	}
+		return;
 }
 
 void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
@@ -410,6 +404,20 @@ void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
 	// then render transparent entities
 	for (s_DrawCommand& command : draw_commands_transp) {
 		renderMeshWithMaterial(command.model, command.mesh, command.material);
+	}
+}
+
+void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
+{
+	fillGBuffer();
+
+	if (pass_setting == SINGLEPASS) {
+		displaySceneSinglepass(scene, camera); // directly illumination to screen
+	}
+	else {
+		fillLightingFBO(scene, camera); // to FBO, then to screen
+
+		displayScene(scene);
 	}
 }
 
@@ -443,7 +451,7 @@ void Renderer::renderSkybox(GFX::Texture* cubemap)
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
 
-	shader->setUniform("u_texture", cubemap, 0);
+	shader->setTexture("u_texture", cubemap, 0);
 
 	sphere.render(GL_TRIANGLES);
 
@@ -464,11 +472,14 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 
 	glEnable(GL_DEPTH_TEST);
 
-	if (pipeline_mode == DEFERRED_MULTIPASS_PHONG || pipeline_mode == DEFERRED_SINGLEPASS_PHONG) {
+	if (pipeline_mode == FORWARD) {
+		renderMeshWithMaterialForward(model, mesh, material);
+	}
+	else if (pipeline_mode == DEFERRED) {
 		renderMeshWithMaterialDeferred(model, mesh, material);
 	}
 	else {
-		renderMeshWithMaterialForward(model, mesh, material);
+		return;
 	}
 
 	// Render just the vertices as a wireframe
@@ -487,7 +498,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, GFX::Mesh* mesh, SCN
 void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Mesh* mesh, SCN::Material* material)
 {
 	Camera* camera = Camera::current;
-	GFX::Shader* shader = GFX::Shader::Get("texture_deferred");
+	GFX::Shader* shader = GFX::Shader::Get("fill_gbuffer");
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -509,16 +520,14 @@ void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Me
 	float t = getTime();
 	shader->setUniform("u_time", t);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
-	shader->setUniform("u_shininess", shininess);
-
-	if (pipeline_mode == DEFERRED_SINGLEPASS_PHONG) {
+	if (pass_setting == SINGLEPASS) {
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
 	}
-	else if (pipeline_mode == DEFERRED_MULTIPASS_PHONG) {
+	else if (pass_setting == MULTIPASS) {
 		for (int i = 0; i < light_info.l_count; i++) {
 			mesh->render(GL_TRIANGLES);
 		}
@@ -530,16 +539,19 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 	Camera* camera = Camera::current;
 	GFX::Shader* shader;
 	
-	if (pipeline_mode == SINGLEPASS_PHONG) {
-		shader = GFX::Shader::Get("singlepass");
+	if (pass_setting == SINGLEPASS && reflectance_model == PHONG) {
+		shader = GFX::Shader::Get("singlepass_phong_forward");
 	}
-	else if (pipeline_mode == MULTIPASS_PHONG) {
-		shader = GFX::Shader::Get("multipass");
+	else if (pass_setting == MULTIPASS && reflectance_model == PHONG) {
+		shader = GFX::Shader::Get("multipass_phong_forward");
 		glDepthFunc(GL_LEQUAL);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 	}
-	else if (pipeline_mode == PBR_SINGLEPASS) {
-		shader = GFX::Shader::Get("pbr_singlepass");
+	else if (pass_setting == SINGLEPASS && reflectance_model == PBR) {
+		shader = GFX::Shader::Get("singlepass_pbr_forward");
+	}
+	else {
+		return;
 	}
 
 	assert(glGetError() == GL_NO_ERROR);
@@ -562,12 +574,12 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 	float t = getTime();
 	shader->setUniform("u_time", t);
 
-	shader->setUniform("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
-	shader->setUniform("u_shininess", shininess);
+	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
-	if (pipeline_mode == SINGLEPASS_PHONG || pipeline_mode == PBR_SINGLEPASS) {
+	if (pass_setting == SINGLEPASS) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
 
@@ -576,7 +588,7 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
 	}
-	else if (pipeline_mode == MULTIPASS_PHONG) {
+	else {
 		for (int i = 0; i < light_info.l_count; i++) {
 			if (i == 0) {
 				glDisable(GL_BLEND);
@@ -602,16 +614,28 @@ void Renderer::showUI()
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::Checkbox("Boundaries", &render_boundaries);
 
-	ImGui::Combo("Pipeline mode", (int*)&pipeline_mode, "SINGLEPASS PHONG\0MULTIPASS PHONG\0DEFERRED SINGLEPASS PHONG\0DEFERRED MULTIPASS PHONG\0PBR SINGLEPASS\0PBR DEFERRED\0", e_PipelineMode::COUNT);
+	ImGui::Separator();
 
-	//add here your stuff
-	//...
-	ImGui::Checkbox("Front Face Culling ON", &front_face_culling_on);
-	ImGui::Checkbox("Frustum Culling ON", &frustum_culling);
+	// PIPELINE SETTINGS
 
-	// for shadow atlas
+	ImGui::Combo("Pipeline mode", (int*)&pipeline_mode, "FORWARD\0DEFERRED\0FORWARD_PLUS", COUNT_PIPELINEMODE);
+	ImGui::Combo("Pass setting", (int*)&pass_setting, "SINGLEPASS\0MULTIPASS\0", COUNT_PASSSETTING);
+	ImGui::Combo("Reflectance model", (int*)&reflectance_model, "PHONG\0PBR\0", COUNT_REFLECTANCEMODEL);
+	
+	if (reflectance_model == PHONG) {
+		ImGui::SliderFloat("Phong Shininess", &shininess, 20.f, 80.f);
+	}
+
+	ImGui::Separator();
+
+	// CULLING SETTINGS
+
+	ImGui::Checkbox("Frustum Culling", &frustum_culling);
+	ImGui::Checkbox("Front Face Culling", &front_face_culling_on);
+
+	ImGui::Separator();
+
 	Shadows::showUI(shadow_info);
-	ImGui::SliderFloat("Phong Shininess", &shininess, 20.f, 80.f);
 }
 
 #else

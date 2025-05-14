@@ -1356,6 +1356,6 @@ void main() {
 			ao_term += 1.0;
 		}
 	}
-	ao_term /= u_sample_count;
+	ao_term /= float(u_sample_count);
 	ssao_fbo = vec3(ao_term);
 }

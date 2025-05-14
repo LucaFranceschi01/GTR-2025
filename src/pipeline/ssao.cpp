@@ -11,6 +11,8 @@ SCN::SSAO::SSAO() {
 	is_active = true;
 	samples = 16;
 	sample_radius = 0.05;
+
+	pointGenerator();
 }
 
 void SCN::SSAO::create_fbo(int width, int height)
@@ -26,11 +28,18 @@ void SCN::SSAO::create_fbo(int width, int height)
 
 void SCN::SSAO::showUI()
 {
-	ImGui::Checkbox("Screen Space Ambient Occlusion", &instance().is_active);
-	if (instance().is_active) {
-		ImGui::SliderInt("Sample count", &instance().samples, 1, MAX_SSAO_SAMPLES);
-		ImGui::SliderFloat("Sample radius", &instance().sample_radius, 0.01, 0.1);
+	SSAO& ssao = instance();
+
+	ImGui::Checkbox("Screen Space Ambient Occlusion", &ssao.is_active);
+	if (ssao.is_active) {
+		ImGui::SliderInt("Sample count", &ssao.samples, 1, MAX_SSAO_SAMPLES);
+		ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.1);
 	}
+}
+
+void SCN::SSAO::pointGenerator()
+{
+	ao_sample_points = generateSpherePoints(samples);
 }
 
 const std::vector<Vector3f> SCN::SSAO::generateSpherePoints(int num, float radius, bool hemi)
@@ -63,8 +72,6 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 {
 	SSAO& ssao = instance();
 	
-	std::vector<Vector3f> ao_sample_points = generateSpherePoints(ssao.samples);
-
 	gbuffer_fbo.depth_texture->copyTo(ssao.fbo.depth_texture);
 
 	Camera* camera = Camera::current;
@@ -82,7 +89,7 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 	// send AO params
 	shader->setUniform("u_sample_count", ssao.samples);
 	shader->setUniform("u_sample_radius", ssao.sample_radius);
-	shader->setUniform3Array("u_sample_pos", (float*)&ao_sample_points, ssao.samples);
+	shader->setUniform3Array("u_sample_pos", (float*)&ssao.ao_sample_points[0], ssao.samples);
 
 	// send camera matrices
 	//shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());

@@ -26,6 +26,14 @@ namespace SCN {
 		SCN::Material* material;
 	};
 
+	struct s_TonemapperInfo {
+		bool active = true;
+		float scale = 1.f;
+		float average_lum = 1.f;
+		float lumwhite2 = 1.f;
+		float igamma = 1.f;
+	};
+
 	enum e_PipelineMode {
 		FORWARD,
 		DEFERRED,
@@ -75,6 +83,8 @@ namespace SCN {
 		GFX::FBO gbuffer_fbo, lighting_fbo;
 
 		float shininess = 30.f;
+
+		s_TonemapperInfo tonemapper;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );

@@ -18,6 +18,7 @@ singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 fill_gbuffer basic.vs fill_gbuffer.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
 ssao_compute quad.vs ssao_compute.fs
+deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
@@ -929,7 +930,7 @@ void main()
 	}
 
 	illumination = vec4(final_light * color, 1.0);
-	}
+}
 
 \multipass_phong_deferred_firstpass.fs
 
@@ -1147,9 +1148,6 @@ void main()
 
 #version 330 core
 
-#include constants
-#include lights
-#include shadows
 #include hdr_tonemapping
 
 in vec2 v_uv;
@@ -1423,7 +1421,7 @@ void main()
 	}
 
 	illumination = vec4(final_light * color, 1.0);
-	}
+}
 
 \ssao_compute.fs
 
@@ -1515,4 +1513,49 @@ void main() {
 	}
 	ao_term =ao_term / float(u_sample_count);
 	ssao_fbo = vec3(ao_term);
+}
+
+\deferred_tonemapper_to_viewport.fs
+
+#version 330 core
+
+#include hdr_tonemapping
+
+in vec2 v_uv;
+
+uniform vec3 u_bg_color;
+uniform sampler2D u_texture;
+
+uniform float u_scale; //color scale before tonemapper
+uniform float u_average_lum; 
+uniform float u_lumwhite2;
+uniform float u_igamma; //inverse gamma
+
+out vec4 FragColor;
+
+void main() {
+	vec4 color = texture( u_texture, v_uv );
+	vec3 rgb = color.xyz;
+
+	// calculate the squared error, since it seems that comparisons are not performed properly
+	vec3 tmp = rgb - u_bg_color;
+	tmp = tmp * tmp;
+	if (tmp.x + tmp.y + tmp.z < 0.0001){
+		discard;
+	}
+
+	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+	float L = (u_scale / u_average_lum) * lum;
+	float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
+
+	rgb = (rgb / lum) * Ld;
+	rgb = max(rgb,vec3(0.001));
+	rgb = pow( rgb, vec3( u_igamma ) );
+
+	// in deferred degamma here
+	if (u_lgc_active != 0) {
+		rgb = gamma(rgb);
+	}
+
+	FragColor = vec4(rgb, color.a);
 }

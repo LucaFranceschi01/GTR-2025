@@ -33,16 +33,20 @@ void SCN::SSAO::showUI()
 
 	ImGui::Checkbox("Screen Space Ambient Occlusion", &ssao.is_active);
 	if (ssao.is_active) {
-		ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.2);
+		if (ImGui::TreeNode("SSAO Settings")) {
+			ImGui::SliderFloat("Sample radius", &ssao.sample_radius, 0.01, 0.2);
 
-		int sample_count_prev = ssao.samples;
-		bool is_ssao_plus_active_prev = ssao.is_ssao_plus_active;
+			int sample_count_prev = ssao.samples;
+			bool is_ssao_plus_active_prev = ssao.is_ssao_plus_active;
 
-		ImGui::SliderInt("Sample count", &ssao.samples, 1, MAX_SSAO_SAMPLES);
-		ImGui::Checkbox("SSAO+", &ssao.is_ssao_plus_active);
+			ImGui::SliderInt("Sample count", &ssao.samples, 1, MAX_SSAO_SAMPLES);
+			ImGui::Checkbox("SSAO+", &ssao.is_ssao_plus_active);
 
-		if (ssao.is_ssao_plus_active != is_ssao_plus_active_prev || ssao.samples != sample_count_prev) {
-			ssao.pointGenerator();
+			if (ssao.is_ssao_plus_active != is_ssao_plus_active_prev || ssao.samples != sample_count_prev) {
+				ssao.pointGenerator();
+			}
+
+			ImGui::TreePop();
 		}
 	}
 }

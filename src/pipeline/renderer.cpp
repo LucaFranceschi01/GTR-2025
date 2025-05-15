@@ -17,6 +17,7 @@
 
 #include "scene.h"
 #include "ssao.h"
+#include "volumetric.h"
 
 using namespace SCN;
 
@@ -56,6 +57,8 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0);
 
 	SSAO::create_fbo(win_size.x, win_size.y);
+
+	VolumetricRendering::create_fbo(win_size.x, win_size.y);
 }
 
 void Renderer::setupScene()
@@ -427,6 +430,8 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 	fillGBuffer();
 
 	SSAO::compute(scene, gbuffer_fbo);
+	
+	VolumetricRendering::compute(scene, gbuffer_fbo);
 
 	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
 
@@ -681,6 +686,8 @@ void Renderer::showUI()
 			ImGui::TreePop();
 		}
 	}
+
+	VolumetricRendering::showUI();
 
 	ImGui::Separator();
 

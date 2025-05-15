@@ -244,6 +244,8 @@ void main()
 	gl_Position = u_viewprojection * vec4( v_world_position, 1.0 );
 }
 
+// =========================================== INCLUDES ===========================================
+
 \utils
 
 //from this github repo
@@ -420,6 +422,20 @@ vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughn
 	return (kd / PI) + (F * D * G) / (4.0 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
 }
 
+\hdr_tonemapping
+
+uniform int u_lgc_active;
+
+vec3 degamma(vec3 c)
+{
+	return pow(c,vec3(2.2));
+}
+
+vec3 gamma(vec3 c)
+{
+	return pow(c,vec3(1.0/2.2));
+}
+
 \shadows_plain.fs
 
 #version 330 core
@@ -457,6 +473,7 @@ void main ()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -499,6 +516,16 @@ void main()
 	// add ambient term
 	vec3 final_light = u_ambient_light;
 
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		color.rgb = degamma(color.rgb);
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
@@ -523,12 +550,12 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+			light_intensity = light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
 			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
-			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+			light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
 		} else if (u_light_types[i] == LT_SPOT) {
 			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
@@ -541,7 +568,7 @@ void main()
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
-				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
@@ -564,7 +591,14 @@ void main()
 		final_light += specular_term;
 	}
 
-	FragColor = vec4(final_light * color.xyz, color.a);
+	vec3 final_color = final_light * color.xyz;
+
+	// to gamma if linear / gamma correction is active
+	if (u_lgc_active != 0) {
+		final_color = gamma(final_color);
+	}
+
+	FragColor = vec4(final_color, color.a);
 }
 
 \multipass_phong_forward.fs
@@ -575,6 +609,7 @@ void main()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -617,6 +652,14 @@ void main()
 	// add ambient term
 	vec3 final_light = u_ambient_light;
 
+	// degamma (to linear) correction if active
+	vec3 light_color = u_light_color;
+	if (u_lgc_active != 0) {
+		color.rgb = degamma(color.rgb);
+		final_light = degamma(final_light);
+		light_color = degamma(light_color);
+	}
+
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
@@ -639,7 +682,7 @@ void main()
 			shadow_factor = compute_shadow_factor(v_world_position);
 		L = normalize(L);
 		
-		light_intensity = u_light_color * u_light_intensity * shadow_factor; // No attenuation for directional light
+		light_intensity = light_color * u_light_intensity * shadow_factor; // No attenuation for directional light
 	}
 	else if (u_light_type == LT_POINT)
 	{
@@ -647,7 +690,7 @@ void main()
 		dist = length(L); // used in light intensity
 		L = normalize(L);
 
-		light_intensity = u_light_color * u_light_intensity / pow(dist, 2); // light intensity reduced by distance
+		light_intensity = light_color * u_light_intensity / pow(dist, 2); // light intensity reduced by distance
 	}
 	else if (u_light_type == LT_SPOT)
 	{
@@ -663,7 +706,7 @@ void main()
 		light_intensity = vec3(0.0);
 		
 		if (numerator >= 0) {
-			light_intensity = u_light_color * u_light_intensity / pow(dist, 2);
+			light_intensity = light_color * u_light_intensity / pow(dist, 2);
 			light_intensity *= numerator;
 			light_intensity /= (cos(u_light_cone.x) - cos(u_light_cone.y));
 			light_intensity *= shadow_factor;
@@ -685,7 +728,14 @@ void main()
 	final_light += diffuse_term;
 	final_light += specular_term;
 
-	FragColor = vec4(final_light * color.xyz, color.a);
+	vec3 final_color = final_light * color.xyz;
+
+	// to gamma if linear / gamma correction is active
+	if (u_lgc_active != 0) {
+		final_color = gamma(final_color);
+	}
+
+	FragColor = vec4(final_color, color.a);
 }
 
 \fill_gbuffer.fs
@@ -694,6 +744,7 @@ void main()
 
 #include utils
 #include constants
+#include hdr_tonemapping
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -729,6 +780,11 @@ void main()
 		color *= texture( u_texture, v_uv ); // ka = kd = ks = color (in our implementation)
 	}
 
+	// here only degamma color
+	if (u_lgc_active != 0) {
+		color.rgb = degamma(color.rgb);
+	}
+
 	if(color.a < u_alpha_cutoff)
 		discard;
 	
@@ -758,6 +814,7 @@ void main()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec2 v_uv;
 
@@ -790,6 +847,16 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 	
 	vec3 final_light = u_ambient_light;
+
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	if (u_ssao_active != 0) {
 		final_light *= texture(u_ssao_texture, uv).rgb;
 	}
@@ -820,12 +887,12 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
 
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+			light_intensity = light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
 			L = u_light_positions[i] - world_pos;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
-			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+			light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
 		} else if (u_light_types[i] == LT_SPOT) {
 			L = u_light_positions[i] - world_pos;
 			dist = length(L); // used in light intensity
@@ -838,7 +905,7 @@ void main()
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
-				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
@@ -861,7 +928,11 @@ void main()
 		final_light += specular_term;
 	}
 
-	FragColor = vec4(final_light * color, 1.0);
+	vec3 final_color = final_light * color;
+	if (u_lgc_active != 0) {
+		final_color = gamma(final_color);
+	}
+	FragColor = vec4(final_color, 1.0);
 }
 
 \multipass_phong_deferred_firstpass.fs
@@ -871,6 +942,7 @@ void main()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec2 v_uv;
 
@@ -903,6 +975,16 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 
 	vec3 final_light = u_ambient_light;
+
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	if (u_ssao_active != 0) {
 		final_light *= texture(u_ssao_texture, uv).rgb;
 	}
@@ -933,7 +1015,7 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
 
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+			light_intensity = light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else {
 			continue;
 		}
@@ -962,6 +1044,7 @@ void main()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec2 v_uv;
 
@@ -994,6 +1077,16 @@ void main()
 
 	vec3 final_light = vec3(0.0);
 
+	// degamma (to linear) correction if active
+	// NOTE: it is weird that in multipass we use the arrays and not the single values, but we did it that way and now we are not changing it
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
 	
@@ -1016,7 +1109,7 @@ void main()
 		L = u_light_positions[i] - world_pos;
 		dist = length(L); // used in light intensity
 		L = normalize(L);
-		light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+		light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
 	} else if (u_light_types[i] == LT_SPOT) {
 		L = u_light_positions[i] - world_pos;
 		dist = length(L); // used in light intensity
@@ -1029,7 +1122,7 @@ void main()
 		numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 		light_intensity = vec3(0.0);
 		if (numerator >= 0) {
-			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+			light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 			light_intensity *= numerator;
 			light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 			light_intensity *= shadow_factor;
@@ -1061,6 +1154,7 @@ void main()
 #include constants
 #include lights
 #include shadows
+#include hdr_tonemapping
 
 in vec2 v_uv;
 
@@ -1082,6 +1176,11 @@ void main()
 		discard;
 	}
 
+	// in deferred degamma here
+	if (u_lgc_active != 0) {
+		color = gamma(color);
+	}
+
 	FragColor = vec4(color, 1.0);
 }
 
@@ -1094,6 +1193,7 @@ void main()
 #include lights
 #include shadows
 #include pbr_functions
+#include hdr_tonemapping
 
 in vec3 v_position;
 in vec3 v_world_position;
@@ -1134,6 +1234,16 @@ void main()
 	// add ambient term
 	vec3 final_light = u_ambient_light;
 
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		color.rgb = degamma(color.rgb);
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	vec3 light_intensity, L;
 	float dist, numerator;
 	
@@ -1163,12 +1273,12 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, v_world_position);
 
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+			light_intensity = light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
 			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
-			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+			light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
 		} else if (u_light_types[i] == LT_SPOT) {
 			L = u_light_positions[i] - v_world_position;
 			dist = length(L); // used in light intensity
@@ -1181,7 +1291,7 @@ void main()
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
-				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
@@ -1193,7 +1303,11 @@ void main()
 		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color.rgb, bao_rou_met.g, bao_rou_met.b);
 	}
 
-	FragColor = vec4(final_light * color.rgb, color.a);
+	vec3 final_color = final_light * color.xyz;
+	if (u_lgc_active != 0) {
+		final_color = gamma(final_color);
+	}
+	FragColor = vec4(final_color, color.a);
 }
 
 \singlepass_pbr_deferred.fs
@@ -1204,6 +1318,7 @@ void main()
 #include lights
 #include shadows
 #include pbr_functions
+#include hdr_tonemapping
 
 in vec2 v_uv;
 
@@ -1238,6 +1353,16 @@ void main()
 	float roughness = gbuffer_fbo1.a;
 	
 	vec3 final_light = u_ambient_light;
+
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		final_light = degamma(final_light);
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
 	if (u_ssao_active != 0) {
 		final_light *= texture(u_ssao_texture, uv).rgb;
 	}
@@ -1271,12 +1396,12 @@ void main()
 			if (u_light_cast_shadowss[i] == 1)
 				shadow_factor = compute_shadow_factor_singlepass(i, world_pos);
 
-			light_intensity = u_light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
+			light_intensity = light_colors[i] * u_light_intensities[i] * shadow_factor; // No attenuation for directional light
 		} else if (u_light_types[i] == LT_POINT) {
 			L = u_light_positions[i] - world_pos;
 			dist = length(L); // used in light intensity
 			L = normalize(L);
-			light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
+			light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2); // light intensity reduced by distance
 		} else if (u_light_types[i] == LT_SPOT) {
 			L = u_light_positions[i] - world_pos;
 			dist = length(L); // used in light intensity
@@ -1289,7 +1414,7 @@ void main()
 			numerator = clamp(dot(L, normalize(u_light_directions[i])), 0.0, 1.0) - cos(u_light_cones[i].y);
 			light_intensity = vec3(0.0);
 			if (numerator >= 0) {
-				light_intensity = u_light_colors[i] * u_light_intensities[i] / pow(dist, 2);
+				light_intensity = light_colors[i] * u_light_intensities[i] / pow(dist, 2);
 				light_intensity *= numerator;
 				light_intensity /= (cos(u_light_cones[i].x) - cos(u_light_cones[i].y));
 				light_intensity *= shadow_factor;
@@ -1301,7 +1426,11 @@ void main()
 		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
 	}
 
-	FragColor = vec4(final_light * color, 1.0);
+	vec3 final_color = final_light * color;
+	if (u_lgc_active != 0) {
+		final_color = gamma(final_color);
+	}
+	FragColor = vec4(final_color, 1.0);
 }
 
 \ssao_compute.fs

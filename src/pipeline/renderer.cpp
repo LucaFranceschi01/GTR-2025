@@ -165,6 +165,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 	
 	SSAO::bind(shader);
 
@@ -212,6 +214,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 
 	vec3 pos;
 	float md;
@@ -292,6 +296,8 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 
 	shader->setUniform("u_bg_color", scene->background_color);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	SSAO::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
@@ -314,6 +320,8 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 
 	shader->setTexture("u_texture", lighting_fbo.color_textures[0], 12);
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 
 	quad->render(GL_TRIANGLES);
 
@@ -533,6 +541,8 @@ void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Me
 	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	if (pass_setting == SINGLEPASS) {
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
@@ -589,6 +599,8 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 
 	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	if (pass_setting == SINGLEPASS) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
@@ -642,6 +654,7 @@ void Renderer::showUI()
 
 	ImGui::Checkbox("Frustum Culling", &frustum_culling);
 	ImGui::Checkbox("Front Face Culling", &front_face_culling_on);
+	ImGui::Checkbox("Linear / Gamma correction", &linear_gamma_correction);
 
 	ImGui::Separator();
 

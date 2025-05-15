@@ -54,6 +54,7 @@ namespace SCN {
 		bool render_boundaries;
 		bool front_face_culling_on = true;
 		bool frustum_culling = false;
+		bool linear_gamma_correction = true;
 		
 		e_PipelineMode pipeline_mode = DEFERRED;
 		e_PassSetting pass_setting = SINGLEPASS;

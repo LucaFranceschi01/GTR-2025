@@ -19,6 +19,7 @@ fill_gbuffer basic.vs fill_gbuffer.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
 ssao_compute quad.vs ssao_compute.fs
 deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
+volumetric_rendering_compute quad.vs volumetric_rendering_compute.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
@@ -1427,7 +1428,7 @@ void main()
 
 #version 330 core
 
-const int MAX_SSAO_SAMPLES = 100;
+const int MAX_SSAO_SAMPLES = 64;
 
 in vec2 v_uv;
 
@@ -1558,4 +1559,60 @@ void main() {
 	}
 
 	FragColor = vec4(rgb, color.a);
+}
+
+\volumetric_rendering_compute.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_depth;
+
+uniform vec2 u_res_inv;
+
+uniform mat4 u_inv_vp_mat;
+uniform vec3 u_camera_position;
+
+uniform int u_raymarching_steps;
+uniform float u_max_ray_len;
+uniform float u_air_density;
+
+layout(location = 0) out vec4 vol_fbo;
+
+void main() {
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+	
+	vec3 ray_dir = u_camera_position - world_pos;
+	float ray_dist = length(ray_dir);
+	ray_dist = min(ray_dist, u_max_ray_len);
+	ray_dir = normalize(ray_dir);
+
+	float ray_step = ray_dist / float(u_raymarching_steps);
+	float it_distance = 0.0;
+	vec3 sample_pos = u_camera_position;
+	float transmittance = 1.0;
+
+	for (int i = 0; i < u_raymarching_steps; i++) {
+		it_distance += ray_step;
+		sample_pos = it_distance * ray_dir;
+
+		// Reduce visibility
+		transmittance -= u_air_density * ray_step;
+
+		// Early out, if we have reached
+		// full opacity
+		if( 0.001 >= transmittance )
+			break;
+	}
+
+	vol_fbo = vec4(vec3(1.0-transmittance), transmittance);
 }

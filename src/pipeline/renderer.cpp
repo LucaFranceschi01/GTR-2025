@@ -121,19 +121,8 @@ void SCN::Renderer::fillGBuffer()
 	gbuffer_fbo.unbind();
 }
 
-void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
+void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 {
-	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
-
-	lighting_fbo.bind();
-
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	//set the clear color (the background color)
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	assert(glGetError() == GL_NO_ERROR);
-
 	// ================================================= FIRST PASS
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
@@ -249,11 +238,9 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_BLEND);
 	glFrontFace(GL_CCW);
-
-	lighting_fbo.unbind();
 }
 
-void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
+void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 	GFX::Shader* shader;
@@ -429,15 +416,28 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 
 	SSAO::compute(scene, gbuffer_fbo);
 
+	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
+
+	lighting_fbo.bind();
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	assert(glGetError() == GL_NO_ERROR);
+
 	if (pass_setting == SINGLEPASS) {
-		displaySceneSinglepass(scene, camera); // directly illumination to screen
+		fillLightingFBOSinglepass(scene, camera); // directly illumination to screen
 	}
 	else {
-		fillLightingFBO(scene, camera); // to FBO, then to screen
+		fillLightingFBOMultipass(scene, camera); // to FBO, then to screen
+	}
+
+	lighting_fbo.unbind();
 
 		displayScene(scene);
 	}
-}
 
 
 void Renderer::renderSkybox(GFX::Texture* cubemap)

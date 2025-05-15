@@ -830,7 +830,7 @@ uniform float u_shininess;
 uniform vec3 u_bg_color;
 uniform int u_ssao_active;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 illumination;
 
 void main()
 {
@@ -928,12 +928,8 @@ void main()
 		final_light += specular_term;
 	}
 
-	vec3 final_color = final_light * color;
-	if (u_lgc_active != 0) {
-		final_color = gamma(final_color);
+	illumination = vec4(final_light * color, 1.0);
 	}
-	FragColor = vec4(final_color, 1.0);
-}
 
 \multipass_phong_deferred_firstpass.fs
 
@@ -1333,7 +1329,7 @@ uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
 uniform int u_ssao_active;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 illumination;
 
 void main()
 {
@@ -1426,12 +1422,8 @@ void main()
 		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
 	}
 
-	vec3 final_color = final_light * color;
-	if (u_lgc_active != 0) {
-		final_color = gamma(final_color);
+	illumination = vec4(final_light * color, 1.0);
 	}
-	FragColor = vec4(final_color, 1.0);
-}
 
 \ssao_compute.fs
 

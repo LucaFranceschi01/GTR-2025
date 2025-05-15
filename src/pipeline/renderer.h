@@ -106,9 +106,9 @@ namespace SCN {
 		void fillGBuffer();
 
 		// Display the scene through deferred render using the G-Buffer information
-		void displayScene(SCN::Scene* scene);
-		void displaySceneSinglepass(SCN::Scene* scene, Camera* camera);
+		void fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera);
+		void fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera);
 
-		void fillLightingFBO(SCN::Scene* scene, Camera* camera);
+		void displayScene(SCN::Scene* scene);
 	};
 };

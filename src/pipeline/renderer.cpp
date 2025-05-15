@@ -50,7 +50,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		win_size.y,
 		1,
 		GL_RGBA,
-		GL_UNSIGNED_BYTE,
+		GL_FLOAT,
 		true);
 
 	sphere.createSphere(1.0);

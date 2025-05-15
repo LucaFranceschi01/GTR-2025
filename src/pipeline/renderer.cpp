@@ -16,7 +16,7 @@
 #include "../core/ui.h"
 
 #include "scene.h"
-
+#include "ssao.h"
 
 using namespace SCN;
 
@@ -37,21 +37,25 @@ Renderer::Renderer(const char* shader_atlas_filename)
 	sphere.createSphere(1.0f);
 	sphere.uploadToVRAM();
 
-	gbuffer_fbo.create(CORE::BaseApplication::instance->window_width,
-		CORE::BaseApplication::instance->window_height,
+	Vector2ui win_size = CORE::getWindowSize();
+
+	gbuffer_fbo.create(win_size.x,
+		win_size.y,
 		2, // Create two textures to render to
 		GL_RGBA, // Each texture has an R G B and A channels
 		GL_UNSIGNED_BYTE, // Uses 8 bits per channel
 		true); // Stores the depth, to a texture
 
-	lighting_fbo.create(CORE::BaseApplication::instance->window_width,
-		CORE::BaseApplication::instance->window_height,
+	lighting_fbo.create(win_size.x,
+		win_size.y,
 		1,
 		GL_RGBA,
 		GL_UNSIGNED_BYTE,
 		true);
 
 	sphere.createSphere(1.0);
+
+	SSAO::create_fbo(win_size.x, win_size.y);
 }
 
 void Renderer::setupScene()
@@ -153,7 +157,7 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 		)
 	);
 
-	shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+	shader->setUniform("u_camera_position", camera->eye);
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_shininess", shininess);
 
@@ -161,6 +165,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+	
+	SSAO::bind(shader);
 
 	quad->render(GL_TRIANGLES);
 
@@ -277,7 +283,7 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 		)
 	);
 
-	shader->setUniform("u_camera_position", camera->viewprojection_matrix.getTranslation());
+	shader->setUniform("u_camera_position", camera->eye);
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
@@ -285,6 +291,8 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	SSAO::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
 	
@@ -410,6 +418,8 @@ void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
 void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 {
 	fillGBuffer();
+
+	SSAO::compute(scene, gbuffer_fbo);
 
 	if (pass_setting == SINGLEPASS) {
 		displaySceneSinglepass(scene, camera); // directly illumination to screen
@@ -636,6 +646,10 @@ void Renderer::showUI()
 	ImGui::Separator();
 
 	Shadows::showUI(shadow_info);
+
+	ImGui::Separator();
+
+	SSAO::showUI();
 }
 
 #else

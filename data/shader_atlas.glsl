@@ -11,17 +11,19 @@ shadows_plain basic.vs shadows_plain.fs
 // forward shaders
 singlepass_phong_forward basic.vs singlepass_phong_forward.fs
 multipass_phong_forward basic.vs multipass_phong_forward.fs
+
 singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 
 // deferred shaders
 fill_gbuffer basic.vs fill_gbuffer.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
+ssao_compute quad.vs ssao_compute.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
-singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
 
+singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
 
 \test.cs
 #version 430 core
@@ -762,12 +764,14 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform float u_shininess;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 out vec4 FragColor;
 
@@ -786,6 +790,9 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 	
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
@@ -870,12 +877,14 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform float u_shininess;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 layout(location = 0) out vec4 illumination;
 
@@ -894,6 +903,9 @@ void main()
 	vec3 color = texture(u_gbuffer_color, uv).rgb;
 
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 diffuse_term, specular_term, light_intensity, L, R;
 	float N_dot_L, R_dot_V, dist, numerator;
@@ -1198,11 +1210,13 @@ in vec2 v_uv;
 uniform sampler2D u_gbuffer_color;
 uniform sampler2D u_gbuffer_normal;
 uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_ssao_texture;
 
 uniform vec2 u_res_inv;
 uniform mat4 u_inv_vp_mat;
 uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
+uniform int u_ssao_active;
 
 out vec4 FragColor;
 
@@ -1224,6 +1238,9 @@ void main()
 	float roughness = gbuffer_fbo1.a;
 	
 	vec3 final_light = u_ambient_light;
+	if (u_ssao_active != 0) {
+		final_light *= texture(u_ssao_texture, uv).rgb;
+	}
 
 	vec3 light_intensity, L;
 	float dist, numerator;
@@ -1285,4 +1302,96 @@ void main()
 	}
 
 	FragColor = vec4(final_light * color, 1.0);
+}
+
+\ssao_compute.fs
+
+#version 330 core
+
+const int MAX_SSAO_SAMPLES = 100;
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_normal;
+uniform sampler2D u_gbuffer_depth;
+
+uniform int u_sample_count;
+uniform float u_sample_radius;
+uniform vec3 u_sample_pos[MAX_SSAO_SAMPLES];
+uniform int u_ssao_plus_active;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_proj_mat;
+uniform mat4 u_inv_proj_mat;
+uniform mat4 u_view_mat;
+
+layout(location = 0) out vec3 ssao_fbo;
+
+void main() {
+	// On the shader:
+	// Centering the UV coords in the middle
+	// of the pixel
+	vec2 uv = v_uv + 0.5 * u_res_inv;
+
+	// The depth is in range (0, 1)
+	float depth = texture(u_gbuffer_depth, uv).r;
+
+	// Skip if we are in the sky
+	if (depth >= 1.0) {
+		ssao_fbo = vec3(1.0);
+		return;
+	}
+
+	vec3 N0 = vec3(1.0);
+	vec4 N = vec4(1.0);
+	if (u_ssao_plus_active != 0) {
+		N0 *= texture(u_gbuffer_normal, uv).xyz * 2.0 - 1.0;
+		N = u_view_mat * vec4(N0, 0.0);
+		N0 = N.xyz;
+	}
+	N0 = normalize(N0); // just in case
+	//N = N * 2.0 - 1.0;
+
+	vec3 v = vec3(0.0, 1.0, 0.0); // make random !!! check out https://www.aussiedwarf.com/2017/05/09/Random10Bit
+	vec3 T = normalize(v - N0 * dot(v, N0));
+	vec3 B = cross(N0, T);
+	mat3 rotmat = mat3(T, B, N0);
+
+	vec4 clip_coords = vec4(uv, depth, 1.0);
+	clip_coords.xyz = clip_coords.xyz * 2.0 - 1.0;
+
+	// Inverse the clip coordinates (-1, 1) to
+	// view coordinates
+	vec4 view_sample_origin = u_inv_proj_mat * clip_coords;
+	view_sample_origin /= view_sample_origin.w;
+
+	float ao_term = 0.0;
+	for(int i = 0; i < u_sample_count; i++) {
+		vec3 view_sample = u_sample_pos[i];
+		if (u_ssao_plus_active != 0) {
+			view_sample = rotmat * view_sample;
+		}
+		view_sample *= u_sample_radius;
+		view_sample += view_sample_origin.xyz;
+
+		// Project the view space sample
+		// Remember to normalize!
+		// Result is clip space (-1,1)
+		vec4 proj_sample = u_proj_mat * vec4(view_sample, 1.0);
+		proj_sample /= proj_sample.w;
+
+		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5;
+
+		// The depth buffer is in the range (0, 1)
+		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
+
+		// Compare the sample_depth and the
+		// proj_sample.z. If it’s not occluded
+		// increment the ao_term.
+		if (sample_depth > (proj_sample.z * 0.5 + 0.5)) {
+			ao_term += 1.0;
+		}
+	}
+	ao_term =ao_term / float(u_sample_count);
+	ssao_fbo = vec3(ao_term);
 }

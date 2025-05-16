@@ -325,6 +325,8 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 	shader->setUniform("u_lumwhite2", tonemapper.lumwhite2);
 	shader->setUniform("u_igamma", tonemapper.igamma);
 
+	VolumetricRendering::bind(shader);
+
 	quad->render(GL_TRIANGLES);
 
 	shader->disable();
@@ -431,7 +433,7 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 
 	SSAO::compute(scene, gbuffer_fbo);
 	
-	VolumetricRendering::compute(scene, gbuffer_fbo);
+	VolumetricRendering::compute(scene, gbuffer_fbo, light_info, shadow_info, linear_gamma_correction);
 
 	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
 

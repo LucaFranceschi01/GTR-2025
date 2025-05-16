@@ -21,7 +21,7 @@ void SCN::VolumetricRendering::create_fbo(int width, int height)
 		height,
 		1,
 		GL_RGBA,
-		GL_UNSIGNED_BYTE,
+		GL_FLOAT,
 		false);
 }
 
@@ -34,7 +34,7 @@ void SCN::VolumetricRendering::showUI()
 		if (ImGui::TreeNode("Volumetric Rendering Settings")) {
 
 			ImGui::SliderInt("Raymarching Steps", &vol.steps, 1, VOLUMETRIC_MAX_STEP_COUNT);
-			ImGui::SliderFloat("Max. Ray Length (m)", &vol.max_ray_len, 0.5f, VOLUMETRIC_MAX_STEP_COUNT);
+			ImGui::SliderFloat("Max. Ray Length (m)", &vol.max_ray_len, 0.5f, VOLUMETRIC_MAX_RAY_LEN);
 			ImGui::SliderFloat("Air Density", &vol.air_density, 0.001f, 0.5f);
 
 			ImGui::TreePop();
@@ -44,9 +44,11 @@ void SCN::VolumetricRendering::showUI()
 
 void SCN::VolumetricRendering::bind(GFX::Shader* shader)
 {
+	shader->setTexture("u_vr_texture", VolumetricRendering::instance().fbo.color_textures[0], 13);
+	shader->setUniform("u_vr_active", (int)VolumetricRendering::instance().is_active);
 }
 
-void SCN::VolumetricRendering::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
+void SCN::VolumetricRendering::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo, SCN::LightUniforms& light_info, Shadows& shadow_info, bool lgc_active)
 {
 	VolumetricRendering& vol = instance();
 
@@ -81,6 +83,15 @@ void SCN::VolumetricRendering::compute(SCN::Scene* scene, const GFX::FBO& gbuffe
 
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
+
+	shader->setUniform("u_lgc_active", lgc_active);
+
+	light_info.bind(shader);
+
+	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
+	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
+
+	shadow_info.bindShadowAtlasPositions(shader, light_info.shadow_lights_idxs);
 
 	quad->render(GL_TRIANGLES);
 

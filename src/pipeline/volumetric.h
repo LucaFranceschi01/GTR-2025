@@ -26,7 +26,7 @@ namespace SCN {
 
 		bool is_active;
 		int steps;
-		float max_ray_len, air_density;
+		float max_ray_len, air_density, vertical_density_factor;
 
 		GFX::FBO fbo;
 

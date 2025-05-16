@@ -1594,6 +1594,7 @@ void main() {
 #include shadows
 #include hdr_tonemapping
 
+const float MAX_VR_HEIGHT = 5.0;
 in vec2 v_uv;
 
 uniform sampler2D u_gbuffer_depth;
@@ -1605,6 +1606,7 @@ uniform vec3 u_camera_position;
 uniform int u_raymarching_steps;
 uniform float u_max_ray_len;
 uniform float u_air_density;
+uniform float u_vr_vertical_density_factor;
 
 layout(location = 0) out vec4 vol_fbo;
 
@@ -1636,6 +1638,7 @@ void main() {
 
 	float ray_step = ray_dist / float(u_raymarching_steps);
 	vec3 sample_pos = u_camera_position;
+	float air_density;
 	
 	// Temporal variable declarations
 	vec3 L, light_intensity;
@@ -1647,6 +1650,9 @@ void main() {
 
 	for (int i = 0; i < u_raymarching_steps; i++) {
 		sample_pos += ray_step * ray_dir;
+		//air_density = u_air_density + (MAX_VR_HEIGHT - sample_pos.y) / MAX_VR_HEIGHT * u_vr_vertical_density_factor;
+		air_density = u_air_density + exp(-u_vr_vertical_density_factor * sample_pos.y / MAX_VR_HEIGHT) * u_air_density;
+		air_density = clamp(air_density, 0.0001, u_air_density * 3.0);
 
 		// Typical singlepass lighting loop
 		for (int j = 0; j < u_light_count; j++) {
@@ -1684,11 +1690,11 @@ void main() {
 				continue;
 			}
 
-			in_scatter += light_intensity * u_air_density * ray_step;
+			in_scatter += light_intensity * air_density * ray_step;
 		}
 
 		// Reduce visibility
-		transmittance -= u_air_density * ray_step;
+		transmittance -= air_density * ray_step;
 
 		// Early out, if we have reached
 		// full opacity

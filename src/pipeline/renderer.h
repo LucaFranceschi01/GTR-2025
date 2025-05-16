@@ -60,7 +60,7 @@ namespace SCN {
 	public:
 		bool render_wireframe;
 		bool render_boundaries;
-		bool front_face_culling_on = true;
+		bool front_face_culling_on = false;
 		bool frustum_culling = false;
 		bool linear_gamma_correction = true;
 		

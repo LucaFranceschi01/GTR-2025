@@ -10,8 +10,9 @@
 SCN::VolumetricRendering::VolumetricRendering() {
 	is_active = true;
 	steps = 100;
-	max_ray_len = 6; // meters
-	air_density = 0.05f;
+	max_ray_len = 10.f; // meters
+	air_density = 0.01f;
+	vertical_density_factor = 7.f;
 }
 
 void SCN::VolumetricRendering::create_fbo(int width, int height)
@@ -35,7 +36,8 @@ void SCN::VolumetricRendering::showUI()
 
 			ImGui::SliderInt("Raymarching Steps", &vol.steps, 1, VOLUMETRIC_MAX_STEP_COUNT);
 			ImGui::SliderFloat("Max. Ray Length (m)", &vol.max_ray_len, 0.5f, VOLUMETRIC_MAX_RAY_LEN);
-			ImGui::SliderFloat("Air Density", &vol.air_density, 0.001f, 0.5f);
+			ImGui::SliderFloat("Air Density", &vol.air_density, 0.001f, 0.1f);
+			ImGui::SliderFloat("Vertical Density Factor", &vol.vertical_density_factor, 1.f, 10.f);
 
 			ImGui::TreePop();
 		}
@@ -80,7 +82,8 @@ void SCN::VolumetricRendering::compute(SCN::Scene* scene, const GFX::FBO& gbuffe
 	shader->setUniform("u_raymarching_steps", vol.steps);
 	shader->setUniform("u_max_ray_len", vol.max_ray_len);
 	shader->setUniform("u_air_density", vol.air_density);
-
+	shader->setUniform("u_vr_vertical_density_factor", vol.vertical_density_factor);
+	
 	shader->setUniform("u_inv_vp_mat", camera->inverse_viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
 

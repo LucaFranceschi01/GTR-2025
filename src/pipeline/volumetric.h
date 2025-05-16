@@ -3,12 +3,14 @@
 #include "gfx/fbo.h"
 #include "core/math.h"
 
+#include "renderer.h"
+
 class GFX::Shader;
 
 namespace SCN {
 	class Scene;
 
-	const int VOLUMETRIC_MAX_STEP_COUNT = 256;
+	const int VOLUMETRIC_MAX_STEP_COUNT = 1000;
 	const int VOLUMETRIC_MAX_RAY_LEN = 20;
 
 	class VolumetricRendering {
@@ -32,6 +34,6 @@ namespace SCN {
 		static void showUI();
 		static void bind(GFX::Shader* shader);
 
-		static void compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo);
+		static void compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo, SCN::LightUniforms& light_info, Shadows& shadow_info, bool lgc_active);
 	};
 }

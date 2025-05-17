@@ -25,10 +25,11 @@ namespace SCN {
 		bool is_ssao_plus_active;
 		int samples;
 		float sample_radius;
+		bool is_half_active;
 
 		std::vector<Vector3f> ao_sample_points;
 
-		GFX::FBO fbo;
+		GFX::FBO fbo, fbo_full;
 
 		static void create_fbo(int width, int height);
 		static void showUI();

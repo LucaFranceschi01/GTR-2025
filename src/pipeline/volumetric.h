@@ -24,11 +24,11 @@ namespace SCN {
 			return INSTANCE;
 		}
 
-		bool is_active;
+		bool is_active, is_half_active;
 		int steps;
 		float max_ray_len, air_density, vertical_density_factor;
 
-		GFX::FBO fbo;
+		GFX::FBO fbo, fbo_full;
 
 		static void create_fbo(int width, int height);
 		static void showUI();

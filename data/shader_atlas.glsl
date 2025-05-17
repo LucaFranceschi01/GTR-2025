@@ -21,6 +21,7 @@ ssao_compute quad.vs ssao_compute.fs
 deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 volumetric_rendering_compute quad.vs volumetric_rendering_compute.fs
 upsample_half_to_full_rgb quad.vs upsample_half_to_full_rgb.fs
+upsample_half_to_full_rgba quad.vs upsample_half_to_full_rgba.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
@@ -1748,6 +1749,54 @@ void main()
 			vec2 tc = uv + u_res_inv * vec2(float(i - M), float(j - M));
 
 			color += coeffs[i] * coeffs[j] * texture(u_texture_half, tc).rgb;
+		}
+	}
+
+	texture_full = color;
+}
+
+\upsample_half_to_full_rgba.fs
+
+#version 330 core
+
+const int M = 6;
+const int N = 2 * M + 1;
+
+const float coeffs[N] = float[N](
+    0.002216,  // G(-6)
+    0.008764,  // G(-5)
+    0.026995,  // G(-4)
+    0.064759,  // G(-3)
+    0.120985,  // G(-2)
+    0.174697,  // G(-1)
+    0.199471,  // G(0)
+    0.174697,  // G(1)
+    0.120985,  // G(2)
+    0.064759,  // G(3)
+    0.026995,  // G(4)
+    0.008764,  // G(5)
+    0.002216   // G(6)
+);
+
+uniform sampler2D u_texture_half;
+
+uniform vec2 u_res_inv;
+
+layout(location = 0) out vec4 texture_full;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	vec4 color = vec4(0.0);
+
+	for (int i = 0; i < N; ++i)
+	{
+		for (int j = 0; j < N; ++j)
+		{
+			vec2 tc = uv + u_res_inv * vec2(float(i - M), float(j - M));
+
+			color += coeffs[i] * coeffs[j] * texture(u_texture_half, tc);
 		}
 	}
 

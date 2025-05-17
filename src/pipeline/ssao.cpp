@@ -167,8 +167,7 @@ void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 	if (ssao.is_half_active) {
 		ssao.fbo_full.bind();
 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, ssao.fbo_full.width, ssao.fbo_full.height);
+		glClear(GL_COLOR_BUFFER_BIT);
 
 		Camera* camera = Camera::current;
 		GFX::Mesh* quad = GFX::Mesh::getQuad();

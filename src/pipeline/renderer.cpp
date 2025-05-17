@@ -50,7 +50,7 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		win_size.y,
 		1,
 		GL_RGBA,
-		GL_UNSIGNED_BYTE,
+		GL_FLOAT,
 		true);
 
 	sphere.createSphere(1.0);
@@ -121,19 +121,8 @@ void SCN::Renderer::fillGBuffer()
 	gbuffer_fbo.unbind();
 }
 
-void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
+void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 {
-	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
-
-	lighting_fbo.bind();
-
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	//set the clear color (the background color)
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	assert(glGetError() == GL_NO_ERROR);
-
 	// ================================================= FIRST PASS
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
@@ -165,6 +154,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 	
 	SSAO::bind(shader);
 
@@ -213,6 +204,8 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 
 	shader->setUniform("u_bg_color", scene->background_color);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	vec3 pos;
 	float md;
 	mat4 model;
@@ -245,12 +238,10 @@ void SCN::Renderer::fillLightingFBO(SCN::Scene* scene, Camera* camera)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_BLEND);
 	glFrontFace(GL_CCW);
-
-	lighting_fbo.unbind();
 }
 
-void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
-{
+void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
+{	
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 	GFX::Shader* shader;
 
@@ -292,6 +283,8 @@ void SCN::Renderer::displaySceneSinglepass(SCN::Scene* scene, Camera* camera)
 
 	shader->setUniform("u_bg_color", scene->background_color);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	SSAO::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
@@ -303,7 +296,14 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 {
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
-	GFX::Shader* shader = GFX::Shader::Get("deferred_to_viewport");
+	GFX::Shader* shader;
+	
+	if (tonemapper.active) {
+		shader = GFX::Shader::Get("deferred_tonemapper_to_viewport");
+	}
+	else {
+		shader = GFX::Shader::Get("deferred_to_viewport");
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
@@ -314,6 +314,13 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 
 	shader->setTexture("u_texture", lighting_fbo.color_textures[0], 12);
 	shader->setUniform("u_bg_color", scene->background_color);
+
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
+	shader->setUniform("u_scale", tonemapper.scale);
+	shader->setUniform("u_average_lum", tonemapper.average_lum);
+	shader->setUniform("u_lumwhite2", tonemapper.lumwhite2);
+	shader->setUniform("u_igamma", tonemapper.igamma);
 
 	quad->render(GL_TRIANGLES);
 
@@ -421,14 +428,27 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 
 	SSAO::compute(scene, gbuffer_fbo);
 
+	gbuffer_fbo.depth_texture->copyTo(lighting_fbo.depth_texture);
+
+	lighting_fbo.bind();
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	assert(glGetError() == GL_NO_ERROR);
+
 	if (pass_setting == SINGLEPASS) {
-		displaySceneSinglepass(scene, camera); // directly illumination to screen
+		fillLightingFBOSinglepass(scene, camera); // directly illumination to screen
 	}
 	else {
-		fillLightingFBO(scene, camera); // to FBO, then to screen
-
-		displayScene(scene);
+		fillLightingFBOMultipass(scene, camera); // to FBO, then to screen
 	}
+
+	lighting_fbo.unbind();
+
+	displayScene(scene);
 }
 
 
@@ -533,6 +553,8 @@ void SCN::Renderer::renderMeshWithMaterialDeferred(const Matrix44 model, GFX::Me
 	shader->setTexture("u_shadow_atlas", shadow_info.shadow_atlas->depth_texture, 8);
 	shader->setUniform("u_shadow_atlas_dims", shadow_info.shadow_atlas_dims);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	if (pass_setting == SINGLEPASS) {
 		//do the draw call that renders the mesh into the screen
 		mesh->render(GL_TRIANGLES);
@@ -589,6 +611,8 @@ void SCN::Renderer::renderMeshWithMaterialForward(const Matrix44 model, GFX::Mes
 
 	if (reflectance_model == PHONG) shader->setUniform("u_shininess", shininess);
 
+	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
 	if (pass_setting == SINGLEPASS) {
 		// Upload all uniforms related to lighting
 		light_info.bind(shader);
@@ -643,13 +667,24 @@ void Renderer::showUI()
 	ImGui::Checkbox("Frustum Culling", &frustum_culling);
 	ImGui::Checkbox("Front Face Culling", &front_face_culling_on);
 
+	SSAO::showUI();
+
+	ImGui::Checkbox("Linear / Gamma correction", &linear_gamma_correction);
+	ImGui::Checkbox("Tonemapper", &tonemapper.active);
+	if (tonemapper.active) {
+		if (ImGui::TreeNode("Tonemapper settings")) {
+			ImGui::SliderFloat("scale", &tonemapper.scale, 0.5f, 3.f);
+			ImGui::SliderFloat("average_lum", &tonemapper.average_lum, 0.5f, 3.f);
+			ImGui::SliderFloat("lumwhite2", &tonemapper.lumwhite2, 0.5f, 3.f);
+			ImGui::SliderFloat("igamma", &tonemapper.igamma, 0.5f, 3.f);
+
+			ImGui::TreePop();
+		}
+	}
+
 	ImGui::Separator();
 
 	Shadows::showUI(shadow_info);
-
-	ImGui::Separator();
-
-	SSAO::showUI();
 }
 
 #else

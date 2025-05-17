@@ -26,6 +26,14 @@ namespace SCN {
 		SCN::Material* material;
 	};
 
+	struct s_TonemapperInfo {
+		bool active = true;
+		float scale = 1.f;
+		float average_lum = 1.f;
+		float lumwhite2 = 1.f;
+		float igamma = 1.f;
+	};
+
 	enum e_PipelineMode {
 		FORWARD,
 		DEFERRED,
@@ -54,6 +62,7 @@ namespace SCN {
 		bool render_boundaries;
 		bool front_face_culling_on = true;
 		bool frustum_culling = false;
+		bool linear_gamma_correction = true;
 		
 		e_PipelineMode pipeline_mode = DEFERRED;
 		e_PassSetting pass_setting = SINGLEPASS;
@@ -74,6 +83,8 @@ namespace SCN {
 		GFX::FBO gbuffer_fbo, lighting_fbo;
 
 		float shininess = 30.f;
+
+		s_TonemapperInfo tonemapper;
 
 		//updated every frame
 		Renderer(const char* shaders_atlas_filename );
@@ -105,9 +116,9 @@ namespace SCN {
 		void fillGBuffer();
 
 		// Display the scene through deferred render using the G-Buffer information
-		void displayScene(SCN::Scene* scene);
-		void displaySceneSinglepass(SCN::Scene* scene, Camera* camera);
+		void fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera);
+		void fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera);
 
-		void fillLightingFBO(SCN::Scene* scene, Camera* camera);
+		void displayScene(SCN::Scene* scene);
 	};
 };

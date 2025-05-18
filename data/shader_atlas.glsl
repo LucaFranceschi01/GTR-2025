@@ -19,6 +19,9 @@ fill_gbuffer basic.vs fill_gbuffer.fs
 deferred_to_viewport quad.vs deferred_to_viewport.fs
 ssao_compute quad.vs ssao_compute.fs
 deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
+volumetric_rendering_compute quad.vs volumetric_rendering_compute.fs
+upsample_half_to_full_rgb quad.vs upsample_half_to_full_rgb.fs
+upsample_half_to_full_rgba quad.vs upsample_half_to_full_rgba.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
@@ -1156,12 +1159,24 @@ uniform vec3 u_bg_color;
 
 uniform sampler2D u_texture;
 
+uniform sampler2D u_vr_texture;
+uniform int u_vr_active;
+
 out vec4 FragColor;
 
 void main()
 {
 	vec2 uv = v_uv;
 	vec3 color = texture( u_texture, v_uv ).rgb;	// if the normal is equal to the background color --> skip shading (for skybox)
+
+	if (u_vr_active != 0) {
+		vec4 volumetric_vals = texture( u_vr_texture, v_uv );
+
+		vec3 in_scattering = volumetric_vals.xyz;
+		vec3 transmittance = vec3(volumetric_vals.w);
+
+		color = color * transmittance + in_scattering;
+	}
 
 	// calculate the squared error, since it seems that comparisons are not performed properly
 	vec3 tmp = color.xyz - u_bg_color;
@@ -1427,7 +1442,7 @@ void main()
 
 #version 330 core
 
-const int MAX_SSAO_SAMPLES = 100;
+const int MAX_SSAO_SAMPLES = 64;
 
 in vec2 v_uv;
 
@@ -1526,6 +1541,9 @@ in vec2 v_uv;
 uniform vec3 u_bg_color;
 uniform sampler2D u_texture;
 
+uniform sampler2D u_vr_texture;
+uniform int u_vr_active;
+
 uniform float u_scale; //color scale before tonemapper
 uniform float u_average_lum; 
 uniform float u_lumwhite2;
@@ -1536,6 +1554,15 @@ out vec4 FragColor;
 void main() {
 	vec4 color = texture( u_texture, v_uv );
 	vec3 rgb = color.xyz;
+
+	if (u_vr_active != 0) {
+		vec4 volumetric_vals = texture( u_vr_texture, v_uv );
+
+		vec3 in_scattering = volumetric_vals.xyz;
+		vec3 transmittance = vec3(volumetric_vals.w);
+
+		rgb = rgb * transmittance + in_scattering;
+	}
 
 	// calculate the squared error, since it seems that comparisons are not performed properly
 	vec3 tmp = rgb - u_bg_color;
@@ -1558,4 +1585,220 @@ void main() {
 	}
 
 	FragColor = vec4(rgb, color.a);
+}
+
+\volumetric_rendering_compute.fs
+
+#version 330 core
+
+#include constants
+#include lights
+#include shadows
+#include hdr_tonemapping
+
+const float MAX_VR_HEIGHT = 5.0;
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_depth;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_inv_vp_mat;
+uniform vec3 u_camera_position;
+
+uniform int u_raymarching_steps;
+uniform float u_max_ray_len;
+uniform float u_air_density;
+uniform float u_vr_vertical_density_factor;
+
+layout(location = 0) out vec4 vol_fbo;
+
+void main() {
+	// Typical deferred preamble to get the world position of a fragment
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+
+	// degamma (to linear) correction if active
+	vec3 light_colors[MAX_LIGHTS] = u_light_colors;
+	if (u_lgc_active != 0) {
+		for (int i=0; i<u_light_count; i++) {
+			light_colors[i] = degamma(light_colors[i]);
+		}
+	}
+
+	// Raymarching variables
+	vec3 ray_dir = world_pos - u_camera_position;
+	float ray_dist = length(ray_dir);
+	ray_dist = min(ray_dist, u_max_ray_len);
+	ray_dir = normalize(ray_dir);
+
+	float ray_step = ray_dist / float(u_raymarching_steps);
+	vec3 sample_pos = u_camera_position;
+	float air_density;
+	
+	// Temporal variable declarations
+	vec3 L, light_intensity;
+	float dist, shadow_factor, numerator;
+	
+	// Accum variables
+	float transmittance = 1.0;
+	vec3 in_scatter = vec3(0.0);
+
+	for (int i = 0; i < u_raymarching_steps; i++) {
+		sample_pos += ray_step * ray_dir;
+		//air_density = u_air_density + (MAX_VR_HEIGHT - sample_pos.y) / MAX_VR_HEIGHT * u_vr_vertical_density_factor;
+		air_density = u_air_density + exp(-u_vr_vertical_density_factor * sample_pos.y / MAX_VR_HEIGHT) * u_air_density;
+		air_density = clamp(air_density, 0.0001, u_air_density * 3.0);
+
+		// Typical singlepass lighting loop
+		for (int j = 0; j < u_light_count; j++) {
+			shadow_factor = 1.0;
+			if (u_light_types[j] == LT_DIRECTIONAL) {
+				L = u_light_directions[j];
+				L = normalize(L);
+
+				if (u_light_cast_shadowss[j] == 1)
+					shadow_factor = compute_shadow_factor_singlepass(j, sample_pos);
+
+				light_intensity = light_colors[j] * u_light_intensities[j] * shadow_factor; // No attenuation for directional light
+			} else if (u_light_types[j] == LT_POINT) {
+				L = u_light_positions[j] - sample_pos;
+				dist = length(L); // used in light intensity
+				L = normalize(L);
+				light_intensity = light_colors[j] * u_light_intensities[j] / pow(dist, 2); // light intensity reduced by distance
+			} else if (u_light_types[j] == LT_SPOT) {
+				L = u_light_positions[j] - sample_pos;
+				dist = length(L); // used in light intensity
+				L = normalize(L);
+
+				if (u_light_cast_shadowss[j] == 1)
+					shadow_factor = compute_shadow_factor_singlepass(j, sample_pos);
+
+				numerator = clamp(dot(L, normalize(u_light_directions[j])), 0.0, 1.0) - cos(u_light_cones[j].y);
+				light_intensity = vec3(0.0);
+				if (numerator >= 0) {
+					light_intensity = light_colors[j] * u_light_intensities[j] / pow(dist, 2);
+					light_intensity *= numerator;
+					light_intensity /= (cos(u_light_cones[j].x) - cos(u_light_cones[j].y));
+					light_intensity *= shadow_factor;
+				}
+			} else {
+				continue;
+			}
+
+			in_scatter += light_intensity * air_density * ray_step;
+		}
+
+		// Reduce visibility
+		transmittance -= air_density * ray_step;
+
+		// Early out, if we have reached
+		// full opacity
+		if( 0.001 >= transmittance )
+			break;
+	}
+
+	vol_fbo = vec4(in_scatter, transmittance);
+}
+
+\upsample_half_to_full_rgb.fs
+
+#version 330 core
+
+const int M = 6;
+const int N = 2 * M + 1;
+
+const float coeffs[N] = float[N](
+    0.002216,  // G(-6)
+    0.008764,  // G(-5)
+    0.026995,  // G(-4)
+    0.064759,  // G(-3)
+    0.120985,  // G(-2)
+    0.174697,  // G(-1)
+    0.199471,  // G(0)
+    0.174697,  // G(1)
+    0.120985,  // G(2)
+    0.064759,  // G(3)
+    0.026995,  // G(4)
+    0.008764,  // G(5)
+    0.002216   // G(6)
+);
+
+uniform sampler2D u_texture_half;
+
+uniform vec2 u_res_inv;
+
+layout(location = 0) out vec3 texture_full;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	vec3 color = vec3(0.0);
+
+	for (int i = 0; i < N; ++i)
+	{
+		for (int j = 0; j < N; ++j)
+		{
+			vec2 tc = uv + u_res_inv * vec2(float(i - M), float(j - M));
+
+			color += coeffs[i] * coeffs[j] * texture(u_texture_half, tc).rgb;
+		}
+	}
+
+	texture_full = color;
+}
+
+\upsample_half_to_full_rgba.fs
+
+#version 330 core
+
+const int M = 6;
+const int N = 2 * M + 1;
+
+const float coeffs[N] = float[N](
+    0.002216,  // G(-6)
+    0.008764,  // G(-5)
+    0.026995,  // G(-4)
+    0.064759,  // G(-3)
+    0.120985,  // G(-2)
+    0.174697,  // G(-1)
+    0.199471,  // G(0)
+    0.174697,  // G(1)
+    0.120985,  // G(2)
+    0.064759,  // G(3)
+    0.026995,  // G(4)
+    0.008764,  // G(5)
+    0.002216   // G(6)
+);
+
+uniform sampler2D u_texture_half;
+
+uniform vec2 u_res_inv;
+
+layout(location = 0) out vec4 texture_full;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	vec4 color = vec4(0.0);
+
+	for (int i = 0; i < N; ++i)
+	{
+		for (int j = 0; j < N; ++j)
+		{
+			vec2 tc = uv + u_res_inv * vec2(float(i - M), float(j - M));
+
+			color += coeffs[i] * coeffs[j] * texture(u_texture_half, tc);
+		}
+	}
+
+	texture_full = color;
 }

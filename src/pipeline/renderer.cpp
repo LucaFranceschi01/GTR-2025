@@ -18,6 +18,7 @@
 #include "scene.h"
 #include "ssao.h"
 #include "volumetric.h"
+#include "ssr.h"
 
 using namespace SCN;
 
@@ -54,11 +55,20 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		GL_FLOAT,
 		true);
 
+	final_frame.create(win_size.x,
+		win_size.y,
+		1,
+		GL_RGBA,
+		GL_FLOAT,
+		true);
+
 	sphere.createSphere(1.0);
 
 	SSAO::create_fbo(win_size.x, win_size.y);
 
 	VolumetricRendering::create_fbo(win_size.x, win_size.y);
+
+	ScreenSpaceReflections::create_fbo(win_size.x, win_size.y);
 }
 
 void Renderer::setupScene()
@@ -297,6 +307,8 @@ void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
 
 void SCN::Renderer::displayScene(SCN::Scene* scene)
 {
+	final_frame.bind();
+	
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
 	GFX::Shader* shader;
@@ -327,9 +339,15 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 
 	VolumetricRendering::bind(shader);
 
+	//ScreenSpaceReflections::bind(shader);
+
 	quad->render(GL_TRIANGLES);
 
 	shader->disable();
+
+	final_frame.unbind();
+
+	//final_frame.color_textures[0]->toViewport();
 }
 
 void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
@@ -429,6 +447,9 @@ void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
 
 void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 {
+	// compute SSR first pass before gbuffer is overwritten in current iteration (unless first iteration)
+	ScreenSpaceReflections::compute_firstpass(scene, gbuffer_fbo, final_frame, linear_gamma_correction);
+
 	fillGBuffer();
 
 	SSAO::compute(scene, gbuffer_fbo);
@@ -454,6 +475,8 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 	}
 
 	lighting_fbo.unbind();
+
+	// compute SSR second pass after lighting is done
 
 	displayScene(scene);
 }
@@ -694,6 +717,8 @@ void Renderer::showUI()
 	ImGui::Separator();
 
 	Shadows::showUI(shadow_info);
+
+	ScreenSpaceReflections::showUI();
 }
 
 #else

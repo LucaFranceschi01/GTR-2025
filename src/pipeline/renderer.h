@@ -80,7 +80,7 @@ namespace SCN {
 		
 		SCN::LightUniforms light_info;
 
-		GFX::FBO gbuffer_fbo, lighting_fbo;
+		GFX::FBO gbuffer_fbo, lighting_fbo, final_frame;
 
 		float shininess = 30.f;
 

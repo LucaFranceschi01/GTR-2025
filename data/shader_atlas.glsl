@@ -16,18 +16,20 @@ singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 
 // deferred shaders
 fill_gbuffer basic.vs fill_gbuffer.fs
-deferred_to_viewport quad.vs deferred_to_viewport.fs
 ssao_compute quad.vs ssao_compute.fs
-deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 volumetric_rendering_compute quad.vs volumetric_rendering_compute.fs
 upsample_half_to_full_rgb quad.vs upsample_half_to_full_rgb.fs
 upsample_half_to_full_rgba quad.vs upsample_half_to_full_rgba.fs
+screen_space_reflections_firstpass quad.vs screen_space_reflections_firstpass.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
 
 singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
+
+deferred_to_viewport quad.vs deferred_to_viewport.fs
+deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 
 \test.cs
 #version 430 core
@@ -799,7 +801,7 @@ void main()
 		vec3 texture_normal = texture(u_normal_map, uv).xyz;
 		texture_normal = (texture_normal * 2.0) - 1.0;
 		texture_normal = normalize(texture_normal);
-		N = perturbNormal(N, v_world_position, uv, texture_normal);
+		//N = perturbNormal(N, v_world_position, uv, texture_normal);
 	}
 
 	vec3 bao_rou_met = vec3(1.0);
@@ -1162,7 +1164,7 @@ uniform sampler2D u_texture;
 uniform sampler2D u_vr_texture;
 uniform int u_vr_active;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 void main()
 {
@@ -1549,7 +1551,7 @@ uniform float u_average_lum;
 uniform float u_lumwhite2;
 uniform float u_igamma; //inverse gamma
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 void main() {
 	vec4 color = texture( u_texture, v_uv );
@@ -1801,4 +1803,89 @@ void main()
 	}
 
 	texture_full = color;
+}
+
+
+\screen_space_reflections_firstpass.fs
+
+#version 330 core
+
+#include constants
+#include lights
+#include shadows
+#include hdr_tonemapping
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_gbuffer_normal;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_inv_vp_mat;
+uniform mat4 u_view_mat;
+uniform mat4 u_proj_mat;
+uniform mat4 u_inv_proj_mat;
+uniform vec3 u_camera_position;
+uniform vec3 u_bg_color;
+
+uniform int u_raymarching_steps;
+uniform float u_max_ray_len;
+
+uniform sampler2D u_prev_frame;
+
+layout(location = 0) out vec4 ssr_fbo;
+
+void main() {
+	// Typical deferred preamble to get the world position of a fragment
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+
+	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
+	vec3 N = N0 * 2.0 - 1.0;
+
+	vec3 tmp = N0 - u_bg_color;
+	tmp = tmp * tmp;
+	if (tmp.x + tmp.y + tmp.z < 0.0001){
+		discard;
+	}
+
+	vec3 V = normalize(u_camera_position - world_pos);
+
+	N = normalize(N); // just in case
+	// Raymarching variables
+	vec3 ray_dir = reflect(-V, N); // minus because of reflect function first argument is incident
+	// assume returns normalized
+
+	float ray_step = u_max_ray_len / float(u_raymarching_steps);
+	vec3 sample_pos = world_pos;
+
+	for (int i = 0; i < u_raymarching_steps; i++) {
+		// compute global position of current raymarching step
+		sample_pos += ray_step * ray_dir;
+
+		// project that global position into camera space --> [-1, 1]
+		vec4 proj_sample = u_proj_mat * u_view_mat * vec4(sample_pos, 1.0);
+		proj_sample /= proj_sample.w;
+
+		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5; // to uv space
+
+		// The depth buffer is in the range (0, 1)
+		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
+		vec3 reflection_color = texture(u_prev_frame, sample_uv).rgb;
+
+		if (sample_depth < proj_sample.z * 0.5 + 0.5) {
+			ssr_fbo = vec4(reflection_color, 1.0);
+			return;
+		}
+	}
+	discard;
+	//ssr_fbo = vec4(ray_dir, 1.0);
+	//ssr_fbo = vec4(sample_pos, 1.0);
 }

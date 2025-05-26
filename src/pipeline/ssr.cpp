@@ -108,7 +108,7 @@ void SCN::ScreenSpaceReflections::compute_firstpass(Scene* scene, const GFX::FBO
 
 	glEnable(GL_DEPTH_TEST);
 
-	fbo.color_textures[0]->toViewport();
+	//fbo.color_textures[0]->toViewport();
 }
 
 void SCN::ScreenSpaceReflections::compute_secondpass(Scene* scene, const GFX::FBO& gbuffer_fbo, const GFX::FBO& lighting_fbo, bool lgc_active)

@@ -1840,6 +1840,8 @@ void main() {
 	// Typical deferred preamble to get the world position of a fragment
 	vec2 uv = gl_FragCoord.xy * u_res_inv;
 
+	//if (texture(u_gbuffer_normal, uv).a > 0.6) discard; // solo rendimiento 
+
 	float depth = texture(u_gbuffer_depth, uv).r;
 	float depth_clip = depth * 2.0 - 1.0;
 	
@@ -1878,6 +1880,7 @@ void main() {
 		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5; // to uv space
 
 		// to avoid artifacts when the reflection is just on the edge of the screen. tradeoff: we lose a reflection pixel. we avoid weird looong lines
+		// apparently this is called frustum clipping :)
 		if (sample_uv.x < u_res_inv.x || sample_uv.x > 1.0 - u_res_inv.x || sample_uv.y < u_res_inv.y || sample_uv.y > 1.0 - u_res_inv.y) discard;
 
 		// The depth buffer is in the range (0, 1)
@@ -1895,6 +1898,4 @@ void main() {
 		}
 	}
 	discard;
-	//ssr_fbo = vec4(ray_dir, 1.0);
-	//ssr_fbo = vec4(sample_pos, 1.0);
 }

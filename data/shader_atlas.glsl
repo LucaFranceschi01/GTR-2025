@@ -1830,6 +1830,7 @@ uniform vec3 u_bg_color;
 
 uniform int u_raymarching_steps;
 uniform float u_max_ray_len;
+uniform float u_hidden_offset;
 
 uniform sampler2D u_prev_frame;
 
@@ -1876,11 +1877,19 @@ void main() {
 
 		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5; // to uv space
 
+		// to avoid artifacts when the reflection is just on the edge of the screen. tradeoff: we lose a reflection pixel. we avoid weird looong lines
+		if (sample_uv.x < u_res_inv.x || sample_uv.x > 1.0 - u_res_inv.x || sample_uv.y < u_res_inv.y || sample_uv.y > 1.0 - u_res_inv.y) discard;
+
 		// The depth buffer is in the range (0, 1)
 		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
 		vec3 reflection_color = texture(u_prev_frame, sample_uv).rgb;
 
-		if (sample_depth < proj_sample.z * 0.5 + 0.5) {
+		float difference = sample_depth - (proj_sample.z * 0.5 + 0.5);
+
+		// to avoid reflecting occluded points. if the z-buffer depth and the sample depth are very different, the collision is not gucci
+		if (difference < u_hidden_offset) discard;
+
+		if (difference < 0.0) {
 			ssr_fbo = vec4(reflection_color, 1.0);
 			return;
 		}

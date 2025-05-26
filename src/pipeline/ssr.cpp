@@ -11,13 +11,14 @@ SCN::ScreenSpaceReflections::ScreenSpaceReflections() {
 	is_active = true;
 	steps = 100;
 	max_ray_len = 10.f; // meters
+	hidden_offset = -0.00015;
 }
 
 void SCN::ScreenSpaceReflections::create_fbo(int width, int height)
 {
 	instance().fbo.create(
-		width / 2,
-		height / 2,
+		width,
+		height,
 		1,
 		GL_RGBA,
 		GL_FLOAT,
@@ -34,6 +35,7 @@ void SCN::ScreenSpaceReflections::showUI()
 
 			ImGui::SliderInt("Raymarching Steps", &ssr.steps, 1, SSR_MAX_STEP_COUNT);
 			ImGui::SliderFloat("Max. Ray Length (m)", &ssr.max_ray_len, 0.5f, SSR_MAX_RAY_LEN);
+			ImGui::DragFloat("Hidden surface offset", &ssr.hidden_offset, 0.00001, -0.01, -0.00001f, "%.5f");
 
 			ImGui::TreePop();
 		}
@@ -82,6 +84,7 @@ void SCN::ScreenSpaceReflections::compute_firstpass(Scene* scene, const GFX::FBO
 
 	shader->setUniform("u_raymarching_steps", ssr.steps);
 	shader->setUniform("u_max_ray_len", ssr.max_ray_len);
+	shader->setUniform("u_hidden_offset", ssr.hidden_offset);
 
 	// send camera matrices
 	Matrix44 inv_proj_mat = camera->projection_matrix;

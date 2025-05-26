@@ -25,6 +25,7 @@ namespace SCN {
 		bool is_active;
 		int steps;
 		float max_ray_len;
+		float hidden_offset;
 
 		GFX::FBO fbo;
 

@@ -1831,6 +1831,7 @@ uniform vec3 u_bg_color;
 uniform int u_raymarching_steps;
 uniform float u_max_ray_len;
 uniform float u_hidden_offset;
+uniform float u_step_size;
 
 uniform sampler2D u_prev_frame;
 
@@ -1866,7 +1867,8 @@ void main() {
 	vec3 ray_dir = reflect(-V, N); // minus because of reflect function first argument is incident
 	// assume returns normalized
 
-	float ray_step = u_max_ray_len / float(u_raymarching_steps);
+	//float ray_step = u_max_ray_len / float(u_raymarching_steps);
+	float ray_step = u_step_size;
 	vec3 sample_pos = world_pos;
 
 	for (int i = 0; i < u_raymarching_steps; i++) {

@@ -347,7 +347,7 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 
 	final_frame.unbind();
 
-	//final_frame.color_textures[0]->toViewport();
+	final_frame.color_textures[0]->toViewport();
 }
 
 void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)

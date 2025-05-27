@@ -21,7 +21,7 @@ void SCN::ScreenSpaceReflections::create_fbo(int width, int height)
 		width,
 		height,
 		1,
-		GL_RGBA,
+		GL_RGB,
 		GL_FLOAT,
 		false);
 }
@@ -50,7 +50,7 @@ void SCN::ScreenSpaceReflections::bind(GFX::Shader* shader)
 	shader->setUniform("u_ssr_active", (int)ScreenSpaceReflections::instance().is_active);
 }
 
-void SCN::ScreenSpaceReflections::compute_firstpass(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active)
+void SCN::ScreenSpaceReflections::fill(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active)
 {
 	ScreenSpaceReflections& ssr = instance();
 	GFX::FBO& fbo = ssr.fbo;
@@ -112,8 +112,4 @@ void SCN::ScreenSpaceReflections::compute_firstpass(Scene* scene, const GFX::FBO
 	glEnable(GL_DEPTH_TEST);
 
 	//fbo.color_textures[0]->toViewport();
-}
-
-void SCN::ScreenSpaceReflections::compute_secondpass(Scene* scene, const GFX::FBO& gbuffer_fbo, const GFX::FBO& lighting_fbo, bool lgc_active)
-{
 }

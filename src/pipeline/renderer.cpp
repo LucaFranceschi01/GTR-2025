@@ -172,6 +172,8 @@ void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 	
 	SSAO::bind(shader);
 
+	ScreenSpaceReflections::bind(shader);
+
 	quad->render(GL_TRIANGLES);
 
 	shader->disable();
@@ -218,6 +220,8 @@ void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_bg_color", scene->background_color);
 
 	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
+	ScreenSpaceReflections::bind(shader);
 
 	vec3 pos;
 	float md;
@@ -299,6 +303,8 @@ void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 
 	SSAO::bind(shader);
+
+	ScreenSpaceReflections::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
 	
@@ -322,6 +328,12 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 
 	assert(glGetError() == GL_NO_ERROR);
 
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
 	//no shader? then nothing to render
 	if (!shader)
 		return;
@@ -338,8 +350,6 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 	shader->setUniform("u_igamma", tonemapper.igamma);
 
 	VolumetricRendering::bind(shader);
-
-	//ScreenSpaceReflections::bind(shader);
 
 	quad->render(GL_TRIANGLES);
 
@@ -448,7 +458,7 @@ void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
 void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 {
 	// compute SSR first pass before gbuffer is overwritten in current iteration (unless first iteration)
-	ScreenSpaceReflections::compute_firstpass(scene, gbuffer_fbo, final_frame, linear_gamma_correction);
+	ScreenSpaceReflections::fill(scene, gbuffer_fbo, final_frame, linear_gamma_correction);
 
 	fillGBuffer();
 
@@ -475,8 +485,6 @@ void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 	}
 
 	lighting_fbo.unbind();
-
-	// compute SSR second pass after lighting is done
 
 	displayScene(scene);
 }

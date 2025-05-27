@@ -417,7 +417,24 @@ vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughn
 	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
-	vec3 F0 = mix(vec3(0.04), albedo, metalness);
+	vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
+	vec3 F = fresnel_schlick(V, H, F0);
+	float D = normal_dist_GGX(N, H, alpha);
+	float G = geometry_smith_GGX(L, V, N, alpha);
+
+	//vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	vec3 kd = albedo;
+
+	return (kd / PI) + (F * D * G) / (4.0 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
+}
+
+vec3 cook_torrance_reflectance_with_ssr(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughness, float metalness, vec3 ssr_color) {
+	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
+	vec3 H = normalize(normalize(V) + normalize(L));
+	
+	//vec3 F0 = albedo + (ssr_color - albedo) * pow(metalness, 3.0);
+	vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
+	F0 = F0 * (1 - 0.2 * roughness); // suggested by chatgpt
 	vec3 F = fresnel_schlick(V, H, F0);
 	float D = normal_dist_GGX(N, H, alpha);
 	float G = geometry_smith_GGX(L, V, N, alpha);
@@ -1344,6 +1361,9 @@ uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
 uniform int u_ssao_active;
 
+uniform sampler2D u_ssr_texture;
+uniform int u_ssr_active;
+
 layout(location = 0) out vec4 illumination;
 
 void main()
@@ -1434,7 +1454,12 @@ void main()
 			continue;
 		}
 
-		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
+		if (u_ssr_active != 0) {
+			vec3 ssr_color = texture(u_ssr_texture, uv).rgb;
+			final_light += light_intensity * cook_torrance_reflectance_with_ssr(V, L, N, color, roughness, metalness, ssr_color);
+		} else {
+			final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
+		}
 	}
 
 	illumination = vec4(final_light * color, 1.0);
@@ -1835,7 +1860,7 @@ uniform float u_step_size;
 
 uniform sampler2D u_prev_frame;
 
-layout(location = 0) out vec4 ssr_fbo;
+layout(location = 0) out vec3 ssr_fbo;
 
 void main() {
 	// Typical deferred preamble to get the world position of a fragment
@@ -1895,7 +1920,7 @@ void main() {
 		if (difference < u_hidden_offset) discard;
 
 		if (difference < 0.0) {
-			ssr_fbo = vec4(reflection_color, 1.0);
+			ssr_fbo = reflection_color;
 			return;
 		}
 	}

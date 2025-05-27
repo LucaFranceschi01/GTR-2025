@@ -33,7 +33,6 @@ namespace SCN {
 		static void showUI();
 		static void bind(GFX::Shader* shader);
 
-		static void compute_firstpass(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active);
-		static void compute_secondpass(Scene* scene, const GFX::FBO& gbuffer_fbo, const GFX::FBO& lighting_fbo, bool lgc_active);
+		static void fill(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active);
 	};
 }

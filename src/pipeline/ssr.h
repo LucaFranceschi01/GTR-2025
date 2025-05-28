@@ -22,10 +22,22 @@ namespace SCN {
 			return INSTANCE;
 		}
 
+		enum eMethod {
+			BALANCE_SLIDER,
+			BALANCE_METALNESS,
+			BALANCE_ROUGHNESS,
+			TREAT_AS_LIGHT,
+			FRESNEL_TWEAK,
+			COUNT
+		};
+
+		eMethod method;
+
 		bool is_active;
 		int steps;
 		float max_ray_len;
 		float hidden_offset, step_size;
+		float shading_weight;
 
 		GFX::FBO fbo;
 

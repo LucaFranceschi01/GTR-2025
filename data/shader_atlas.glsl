@@ -432,9 +432,9 @@ vec3 cook_torrance_reflectance_with_ssr(vec3 V, vec3 L, vec3 N, vec3 albedo, flo
 	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
-	//vec3 F0 = albedo + (ssr_color - albedo) * pow(metalness, 3.0);
-	vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
-	F0 = F0 * (1 - 0.2 * roughness); // suggested by chatgpt
+	vec3 F0 = albedo + (ssr_color - albedo) * pow(metalness, 3.0);
+	//vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
+	//F0 = F0 * (1 - 0.2 * roughness); // suggested by chatgpt
 	vec3 F = fresnel_schlick(V, H, F0);
 	float D = normal_dist_GGX(N, H, alpha);
 	float G = geometry_smith_GGX(L, V, N, alpha);
@@ -1361,8 +1361,16 @@ uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
 uniform int u_ssao_active;
 
+const int SSR_METHOD_BALANCE_SLIDER = 		0;
+const int SSR_METHOD_BALANCE_METALNESS = 	1;
+const int SSR_METHOD_BALANCE_ROUGHNESS = 	2;
+const int SSR_METHOD_TREAT_AS_LIGHT =		3;
+const int SSR_METHOD_FRESNEL_TWEAK =		4;
+
 uniform sampler2D u_ssr_texture;
 uniform int u_ssr_active;
+uniform int u_ssr_method;
+uniform float u_ssr_weight;
 
 layout(location = 0) out vec4 illumination;
 
@@ -1416,6 +1424,9 @@ void main()
 		discard;
 	}
 
+	// FOR SSR
+	vec3 ssr_color = texture(u_ssr_texture, uv).rgb;
+
 	for (int i=0; i<u_light_count; i++)
 	{
 		// diffuse
@@ -1454,12 +1465,22 @@ void main()
 			continue;
 		}
 
-		if (u_ssr_active != 0) {
-			vec3 ssr_color = texture(u_ssr_texture, uv).rgb;
+		if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_FRESNEL_TWEAK) {
 			final_light += light_intensity * cook_torrance_reflectance_with_ssr(V, L, N, color, roughness, metalness, ssr_color);
 		} else {
 			final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
 		}
+
+	}
+
+	if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_SLIDER) {
+		final_light = (1.0 - u_ssr_weight) * final_light + u_ssr_weight * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_METALNESS) {
+		final_light = (1.0 - metalness) * final_light + metalness * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_ROUGHNESS) {
+		final_light = roughness * final_light + (1.0 - roughness) * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_TREAT_AS_LIGHT) {
+		final_light += ssr_color * cook_torrance_reflectance(V, reflect(-V, N), N, color, roughness, metalness);
 	}
 
 	illumination = vec4(final_light * color, 1.0);

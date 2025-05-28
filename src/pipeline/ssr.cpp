@@ -13,6 +13,9 @@ SCN::ScreenSpaceReflections::ScreenSpaceReflections() {
 	max_ray_len = 10.f; // meters
 	hidden_offset = -0.00015;
 	step_size = max_ray_len / float(steps);
+
+	method = BALANCE_SLIDER;
+	shading_weight = 0.01;
 }
 
 void SCN::ScreenSpaceReflections::create_fbo(int width, int height)
@@ -34,10 +37,12 @@ void SCN::ScreenSpaceReflections::showUI()
 	if (ssr.is_active) {
 		if (ImGui::TreeNode("SSR Settings")) {
 
+			ImGui::Combo("Compose method", (int*)&ssr.method, "BALANCE_SLIDER\0BALANCE_METALNESS\0BALANCE_ROUGHNESS\0TREAT_AS_LIGHT\0FRESNEL_TWEAK\0", eMethod::COUNT);
 			ImGui::SliderInt("Raymarching Steps", &ssr.steps, 1, SSR_MAX_STEP_COUNT);
 			ImGui::SliderFloat("Max. Ray Length (m)", &ssr.max_ray_len, 0.5f, SSR_MAX_RAY_LEN);
 			ImGui::DragFloat("Hidden surface offset", &ssr.hidden_offset, 0.00001, -0.01, -0.00001f, "%.5f");
 			ImGui::DragFloat("Step size", &ssr.step_size, 0.001f, 0.00001f, float(SSR_MAX_RAY_LEN) / ssr.steps, "%.5f");
+			ImGui::SliderFloat("Shading Weight", &ssr.shading_weight, 0.f, 1.f);
 
 			ImGui::TreePop();
 		}
@@ -48,6 +53,8 @@ void SCN::ScreenSpaceReflections::bind(GFX::Shader* shader)
 {
 	shader->setTexture("u_ssr_texture", ScreenSpaceReflections::instance().fbo.color_textures[0], 14);
 	shader->setUniform("u_ssr_active", (int)ScreenSpaceReflections::instance().is_active);
+	shader->setUniform("u_ssr_method", (int)ScreenSpaceReflections::instance().method);
+	shader->setUniform("u_ssr_weight", ScreenSpaceReflections::instance().shading_weight);
 }
 
 void SCN::ScreenSpaceReflections::fill(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active)

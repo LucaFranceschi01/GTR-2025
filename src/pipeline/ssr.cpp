@@ -60,6 +60,9 @@ void SCN::ScreenSpaceReflections::bind(GFX::Shader* shader)
 void SCN::ScreenSpaceReflections::fill(Scene* scene, const GFX::FBO& prev_gbuffer_fbo, const GFX::FBO& prev_frame, bool lgc_active)
 {
 	ScreenSpaceReflections& ssr = instance();
+
+	if (!ssr.is_active) return;
+
 	GFX::FBO& fbo = ssr.fbo;
 
 	Camera* camera = Camera::current;

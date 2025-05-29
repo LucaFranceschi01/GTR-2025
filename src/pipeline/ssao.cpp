@@ -105,6 +105,9 @@ const std::vector<Vector3f> SCN::SSAO::generateSpherePoints(int num, float radiu
 void SCN::SSAO::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo)
 {
 	SSAO& ssao = instance();
+
+	if (!ssao.is_active) return;
+
 	{
 		GFX::FBO* fbo = &ssao.fbo_full;
 		if (ssao.is_half_active) {

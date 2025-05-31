@@ -1878,6 +1878,7 @@ uniform int u_raymarching_steps;
 uniform float u_max_ray_len;
 uniform float u_hidden_offset;
 uniform float u_step_size;
+uniform float u_thickness;
 
 uniform sampler2D u_prev_frame;
 
@@ -1935,12 +1936,17 @@ void main() {
 		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
 		vec3 reflection_color = texture(u_prev_frame, sample_uv).rgb;
 
-		float difference = sample_depth - (proj_sample.z * 0.5 + 0.5);
+		vec4 view_proj_sample_depth = u_inv_proj_mat * (vec4(proj_sample.xy, sample_depth, 1.0) * 2.0 - 1.0);
+		view_proj_sample_depth /= view_proj_sample_depth.w;
+		vec4 view_proj_sample = u_inv_proj_mat * proj_sample;
+		view_proj_sample /= view_proj_sample.w;
+
+		float difference = (view_proj_sample_depth.z * 0.5 + 0.5) - (view_proj_sample.z * 0.5 + 0.5);
 
 		// to avoid reflecting occluded points. if the z-buffer depth and the sample depth are very different, the collision is not gucci
 		if (difference < u_hidden_offset) discard;
 
-		if (difference < 0.0) {
+		if (difference < -u_thickness) {
 			ssr_fbo = reflection_color;
 			return;
 		}

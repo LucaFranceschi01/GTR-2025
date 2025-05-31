@@ -37,7 +37,7 @@ namespace SCN {
 		int steps;
 		float max_ray_len;
 		float hidden_offset, step_size;
-		float shading_weight;
+		float shading_weight, thickness;
 
 		GFX::FBO fbo;
 

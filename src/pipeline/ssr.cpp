@@ -16,6 +16,7 @@ SCN::ScreenSpaceReflections::ScreenSpaceReflections() {
 
 	method = BALANCE_SLIDER;
 	shading_weight = 0.01;
+	thickness = 0.001;
 }
 
 void SCN::ScreenSpaceReflections::create_fbo(int width, int height)
@@ -43,6 +44,7 @@ void SCN::ScreenSpaceReflections::showUI()
 			ImGui::DragFloat("Hidden surface offset", &ssr.hidden_offset, 0.00001, -0.01, -0.00001f, "%.5f");
 			ImGui::DragFloat("Step size", &ssr.step_size, 0.001f, 0.00001f, float(SSR_MAX_RAY_LEN) / ssr.steps, "%.5f");
 			ImGui::SliderFloat("Shading Weight", &ssr.shading_weight, 0.f, 1.f);
+			ImGui::DragFloat("Thickness", &ssr.thickness, 0.00001f, 0.00001f, 0.001, "%.5f");
 
 			ImGui::TreePop();
 		}
@@ -98,6 +100,7 @@ void SCN::ScreenSpaceReflections::fill(Scene* scene, const GFX::FBO& prev_gbuffe
 	shader->setUniform("u_max_ray_len", ssr.max_ray_len);
 	shader->setUniform("u_hidden_offset", ssr.hidden_offset);
 	shader->setUniform("u_step_size", ssr.step_size);
+	shader->setUniform("u_thickness", ssr.thickness);
 
 	// send camera matrices
 	Matrix44 inv_proj_mat = camera->projection_matrix;

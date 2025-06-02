@@ -64,6 +64,9 @@ void SCN::VolumetricRendering::bind(GFX::Shader* shader)
 void SCN::VolumetricRendering::compute(SCN::Scene* scene, const GFX::FBO& gbuffer_fbo, SCN::LightUniforms& light_info, Shadows& shadow_info, bool lgc_active)
 {
 	VolumetricRendering& vol = instance();
+
+	if (!vol.is_active) return;
+
 	{
 		GFX::FBO* fbo = &vol.fbo_full;
 		if (vol.is_half_active) {

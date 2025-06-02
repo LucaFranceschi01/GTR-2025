@@ -16,18 +16,20 @@ singlepass_pbr_forward basic.vs singlepass_pbr_forward.fs
 
 // deferred shaders
 fill_gbuffer basic.vs fill_gbuffer.fs
-deferred_to_viewport quad.vs deferred_to_viewport.fs
 ssao_compute quad.vs ssao_compute.fs
-deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 volumetric_rendering_compute quad.vs volumetric_rendering_compute.fs
 upsample_half_to_full_rgb quad.vs upsample_half_to_full_rgb.fs
 upsample_half_to_full_rgba quad.vs upsample_half_to_full_rgba.fs
+screen_space_reflections_firstpass quad.vs screen_space_reflections_firstpass.fs
 
 singlepass_phong_deferred quad.vs singlepass_phong_deferred.fs
 multipass_phong_deferred_firstpass quad.vs multipass_phong_deferred_firstpass.fs
 multipass_phong_deferred basic.vs multipass_phong_deferred.fs
 
 singlepass_pbr_deferred quad.vs singlepass_pbr_deferred.fs
+
+deferred_to_viewport quad.vs deferred_to_viewport.fs
+deferred_tonemapper_to_viewport quad.vs deferred_tonemapper_to_viewport.fs
 
 \test.cs
 #version 430 core
@@ -415,7 +417,24 @@ vec3 cook_torrance_reflectance(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughn
 	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
 	vec3 H = normalize(normalize(V) + normalize(L));
 	
-	vec3 F0 = mix(vec3(0.04), albedo, metalness);
+	vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
+	vec3 F = fresnel_schlick(V, H, F0);
+	float D = normal_dist_GGX(N, H, alpha);
+	float G = geometry_smith_GGX(L, V, N, alpha);
+
+	//vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness); // from https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl line 165
+	vec3 kd = albedo;
+
+	return (kd / PI) + (F * D * G) / (4.0 * clamp(dot(N, L), 0.0001, 1.0) * clamp(dot(N, V), 0.0001, 1.0)); // small delta to avoid division by 0
+}
+
+vec3 cook_torrance_reflectance_with_ssr(vec3 V, vec3 L, vec3 N, vec3 albedo, float roughness, float metalness, vec3 ssr_color) {
+	float alpha = pow(clamp(roughness, 0.0001, 1.0), 2); // just in case clamp
+	vec3 H = normalize(normalize(V) + normalize(L));
+	
+	vec3 F0 = albedo + (ssr_color - albedo) * pow(metalness, 3.0);
+	//vec3 F0 = mix(vec3(0.04), albedo, metalness); // perfect reflection before fresnel
+	//F0 = F0 * (1 - 0.2 * roughness); // suggested by chatgpt
 	vec3 F = fresnel_schlick(V, H, F0);
 	float D = normal_dist_GGX(N, H, alpha);
 	float G = geometry_smith_GGX(L, V, N, alpha);
@@ -799,7 +818,7 @@ void main()
 		vec3 texture_normal = texture(u_normal_map, uv).xyz;
 		texture_normal = (texture_normal * 2.0) - 1.0;
 		texture_normal = normalize(texture_normal);
-		N = perturbNormal(N, v_world_position, uv, texture_normal);
+		//N = perturbNormal(N, v_world_position, uv, texture_normal);
 	}
 
 	vec3 bao_rou_met = vec3(1.0);
@@ -1162,7 +1181,7 @@ uniform sampler2D u_texture;
 uniform sampler2D u_vr_texture;
 uniform int u_vr_active;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 void main()
 {
@@ -1342,6 +1361,17 @@ uniform vec3 u_camera_position;
 uniform vec3 u_bg_color;
 uniform int u_ssao_active;
 
+const int SSR_METHOD_BALANCE_SLIDER = 		0;
+const int SSR_METHOD_BALANCE_METALNESS = 	1;
+const int SSR_METHOD_BALANCE_ROUGHNESS = 	2;
+const int SSR_METHOD_TREAT_AS_LIGHT =		3;
+const int SSR_METHOD_FRESNEL_TWEAK =		4;
+
+uniform sampler2D u_ssr_texture;
+uniform int u_ssr_active;
+uniform int u_ssr_method;
+uniform float u_ssr_weight;
+
 layout(location = 0) out vec4 illumination;
 
 void main()
@@ -1394,6 +1424,9 @@ void main()
 		discard;
 	}
 
+	// FOR SSR
+	vec3 ssr_color = texture(u_ssr_texture, uv).rgb;
+
 	for (int i=0; i<u_light_count; i++)
 	{
 		// diffuse
@@ -1432,7 +1465,22 @@ void main()
 			continue;
 		}
 
-		final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
+		if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_FRESNEL_TWEAK) {
+			final_light += light_intensity * cook_torrance_reflectance_with_ssr(V, L, N, color, roughness, metalness, ssr_color);
+		} else {
+			final_light += light_intensity * cook_torrance_reflectance(V, L, N, color, roughness, metalness);
+		}
+
+	}
+
+	if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_SLIDER) {
+		final_light = (1.0 - u_ssr_weight) * final_light + u_ssr_weight * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_METALNESS) {
+		final_light = (1.0 - metalness) * final_light + metalness * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_BALANCE_ROUGHNESS) {
+		final_light = roughness * final_light + (1.0 - roughness) * ssr_color;
+	} else if (u_ssr_active != 0 && u_ssr_method == SSR_METHOD_TREAT_AS_LIGHT) {
+		final_light += ssr_color * cook_torrance_reflectance(V, reflect(-V, N), N, color, roughness, metalness);
 	}
 
 	illumination = vec4(final_light * color, 1.0);
@@ -1549,7 +1597,7 @@ uniform float u_average_lum;
 uniform float u_lumwhite2;
 uniform float u_igamma; //inverse gamma
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 void main() {
 	vec4 color = texture( u_texture, v_uv );
@@ -1801,4 +1849,101 @@ void main()
 	}
 
 	texture_full = color;
+}
+
+
+\screen_space_reflections_firstpass.fs
+
+#version 330 core
+
+#include constants
+#include lights
+#include shadows
+#include hdr_tonemapping
+
+in vec2 v_uv;
+
+uniform sampler2D u_gbuffer_depth;
+uniform sampler2D u_gbuffer_normal;
+
+uniform vec2 u_res_inv;
+uniform mat4 u_inv_vp_mat;
+uniform mat4 u_view_mat;
+uniform mat4 u_proj_mat;
+uniform mat4 u_inv_proj_mat;
+uniform vec3 u_camera_position;
+uniform vec3 u_bg_color;
+
+uniform int u_raymarching_steps;
+uniform float u_max_ray_len;
+uniform float u_hidden_offset;
+uniform float u_step_size;
+
+uniform sampler2D u_prev_frame;
+
+layout(location = 0) out vec3 ssr_fbo;
+
+void main() {
+	// Typical deferred preamble to get the world position of a fragment
+	vec2 uv = gl_FragCoord.xy * u_res_inv;
+
+	//if (texture(u_gbuffer_normal, uv).a > 0.6) discard; // solo rendimiento 
+
+	float depth = texture(u_gbuffer_depth, uv).r;
+	float depth_clip = depth * 2.0 - 1.0;
+	
+	vec2 uv_clip = uv * 2.0 - 1.0;
+	vec4 clip_coords = vec4( uv_clip.x, uv_clip.y, depth_clip, 1.0);
+	vec4 not_norm_world_pos = u_inv_vp_mat * clip_coords;
+	vec3 world_pos = not_norm_world_pos.xyz / not_norm_world_pos.w;
+
+	vec3 N0 = texture(u_gbuffer_normal, uv).rgb;
+	vec3 N = N0 * 2.0 - 1.0;
+
+	vec3 tmp = N0 - u_bg_color;
+	tmp = tmp * tmp;
+	if (tmp.x + tmp.y + tmp.z < 0.0001){
+		discard;
+	}
+
+	vec3 V = normalize(u_camera_position - world_pos);
+
+	N = normalize(N); // just in case
+	// Raymarching variables
+	vec3 ray_dir = reflect(-V, N); // minus because of reflect function first argument is incident
+	// assume returns normalized
+
+	//float ray_step = u_max_ray_len / float(u_raymarching_steps);
+	float ray_step = u_step_size;
+	vec3 sample_pos = world_pos;
+
+	for (int i = 0; i < u_raymarching_steps; i++) {
+		// compute global position of current raymarching step
+		sample_pos += ray_step * ray_dir;
+
+		// project that global position into camera space --> [-1, 1]
+		vec4 proj_sample = u_proj_mat * u_view_mat * vec4(sample_pos, 1.0);
+		proj_sample /= proj_sample.w;
+
+		vec2 sample_uv = proj_sample.xy * 0.5 + 0.5; // to uv space
+
+		// to avoid artifacts when the reflection is just on the edge of the screen. tradeoff: we lose a reflection pixel. we avoid weird looong lines
+		// apparently this is called frustum clipping :)
+		if (sample_uv.x < u_res_inv.x || sample_uv.x > 1.0 - u_res_inv.x || sample_uv.y < u_res_inv.y || sample_uv.y > 1.0 - u_res_inv.y) discard;
+
+		// The depth buffer is in the range (0, 1)
+		float sample_depth = texture(u_gbuffer_depth, sample_uv).r;
+		vec3 reflection_color = texture(u_prev_frame, sample_uv).rgb;
+
+		float difference = sample_depth - (proj_sample.z * 0.5 + 0.5);
+
+		// to avoid reflecting occluded points. if the z-buffer depth and the sample depth are very different, the collision is not gucci
+		if (difference < u_hidden_offset) discard;
+
+		if (difference < 0.0) {
+			ssr_fbo = reflection_color;
+			return;
+		}
+	}
+	discard;
 }

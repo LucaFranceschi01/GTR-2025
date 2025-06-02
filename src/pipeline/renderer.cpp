@@ -18,6 +18,7 @@
 #include "scene.h"
 #include "ssao.h"
 #include "volumetric.h"
+#include "ssr.h"
 
 using namespace SCN;
 
@@ -54,11 +55,20 @@ Renderer::Renderer(const char* shader_atlas_filename)
 		GL_FLOAT,
 		true);
 
+	final_frame.create(win_size.x,
+		win_size.y,
+		1,
+		GL_RGBA,
+		GL_FLOAT,
+		true);
+
 	sphere.createSphere(1.0);
 
 	SSAO::create_fbo(win_size.x, win_size.y);
 
 	VolumetricRendering::create_fbo(win_size.x, win_size.y);
+
+	ScreenSpaceReflections::create_fbo(win_size.x, win_size.y);
 }
 
 void Renderer::setupScene()
@@ -162,6 +172,8 @@ void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 	
 	SSAO::bind(shader);
 
+	ScreenSpaceReflections::bind(shader);
+
 	quad->render(GL_TRIANGLES);
 
 	shader->disable();
@@ -208,6 +220,8 @@ void SCN::Renderer::fillLightingFBOMultipass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_bg_color", scene->background_color);
 
 	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
+
+	ScreenSpaceReflections::bind(shader);
 
 	vec3 pos;
 	float md;
@@ -289,6 +303,8 @@ void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
 	shader->setUniform("u_lgc_active", (int)linear_gamma_correction);
 
 	SSAO::bind(shader);
+
+	ScreenSpaceReflections::bind(shader);
 		
 	quad->render(GL_TRIANGLES);
 	
@@ -297,6 +313,8 @@ void SCN::Renderer::fillLightingFBOSinglepass(SCN::Scene* scene, Camera* camera)
 
 void SCN::Renderer::displayScene(SCN::Scene* scene)
 {
+	final_frame.bind();
+	
 	GFX::Mesh* quad = GFX::Mesh::getQuad();
 
 	GFX::Shader* shader;
@@ -309,6 +327,12 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 	}
 
 	assert(glGetError() == GL_NO_ERROR);
+
+
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
 	//no shader? then nothing to render
 	if (!shader)
@@ -330,6 +354,10 @@ void SCN::Renderer::displayScene(SCN::Scene* scene)
 	quad->render(GL_TRIANGLES);
 
 	shader->disable();
+
+	final_frame.unbind();
+
+	final_frame.color_textures[0]->toViewport();
 }
 
 void Renderer::parseSceneEntities(SCN::Scene* scene, Camera* cam)
@@ -429,6 +457,9 @@ void SCN::Renderer::renderSceneForward(SCN::Scene* scene, Camera* camera)
 
 void SCN::Renderer::renderSceneDeferred(SCN::Scene* scene, Camera* camera)
 {
+	// compute SSR first pass before gbuffer is overwritten in current iteration (unless first iteration)
+	ScreenSpaceReflections::fill(scene, gbuffer_fbo, final_frame, linear_gamma_correction);
+
 	fillGBuffer();
 
 	SSAO::compute(scene, gbuffer_fbo);
@@ -694,6 +725,8 @@ void Renderer::showUI()
 	ImGui::Separator();
 
 	Shadows::showUI(shadow_info);
+
+	ScreenSpaceReflections::showUI();
 }
 
 #else
